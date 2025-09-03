@@ -1,0 +1,12 @@
+* {
+    box-sizing: border-box;
+    
+}
+
+.login-page {
+    background-image: url("../assets/LoginBG.png");
+    background-size: 100% 100%;         /* Make the image cover the whole screen */
+    background-repeat: no-repeat;   /* Prevent the image from repeating */
+    background-position: center;
+    height: 100vh;
+}
