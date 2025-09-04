@@ -7,6 +7,9 @@ import {
   query,
   doc,
   deleteDoc,
+  getDoc,
+  setDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import Swal from "sweetalert2";
 
@@ -38,7 +41,8 @@ const ResolvedReports = () => {
   };
   const allowedTypes = allowedTypesForRole(myRole);
 
-  const hideActions = myRole === "MIS Asst. Admin" || myRole === "CSD Asst. Admin";
+  const hideActions =
+    myRole === "MIS Asst. Admin" || myRole === "CSD Asst. Admin";
   const COLS = hideActions ? 4 : 5; // for empty-state colSpan & header count
 
   // live subscribe to resolvedReports
@@ -49,8 +53,10 @@ const ResolvedReports = () => {
         const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         // newest resolved first
         rows.sort((a, b) => {
-          const ra = a.resolvedAt?.toMillis?.() ?? a.serverTimeStamp?.toMillis?.() ?? 0;
-          const rb = b.resolvedAt?.toMillis?.() ?? b.serverTimeStamp?.toMillis?.() ?? 0;
+          const ra =
+            a.resolvedAt?.toMillis?.() ?? a.serverTimeStamp?.toMillis?.() ?? 0;
+          const rb =
+            b.resolvedAt?.toMillis?.() ?? b.serverTimeStamp?.toMillis?.() ?? 0;
           return rb - ra;
         });
         setReports(rows);
@@ -92,54 +98,94 @@ const ResolvedReports = () => {
     return reports.filter((r) => allowedTypes.includes(r.serviceType || ""));
   }, [reports, allowedTypes]);
 
-  // 2) search filter by building / floor location / description
+  // 2) exclude items soft-hidden for Admin
+  const roleAndAdminFiltered = useMemo(() => {
+    return roleFiltered.filter((r) => !r.hiddenForAdmin);
+  }, [roleFiltered]);
+
+  // 3) search filter by building / floor location / description
   const filtered = useMemo(() => {
-    if (!search.trim()) return roleFiltered;
+    if (!search.trim()) return roleAndAdminFiltered;
     const q = search.toLowerCase();
-    return roleFiltered.filter((r) => {
+    return roleAndAdminFiltered.filter((r) => {
       return (
         (r.buildingName || "").toLowerCase().includes(q) ||
         (r.floorLocation || "").toLowerCase().includes(q) ||
         (r.additionalDetails || "").toLowerCase().includes(q)
       );
     });
-  }, [search, roleFiltered]);
+  }, [search, roleAndAdminFiltered]);
 
+  // Soft-hide for Admin, hard-delete only if user has also hidden it in their Report Log
   const handleDelete = async (report) => {
     try {
       const result = await Swal.fire({
-        title: "Delete this report?",
-        text: "This will permanently remove the report from Resolved Reports.",
-        icon: "warning",
+        title: "Remove this report?",
+        text:
+          "This action will remove the report from the Resolved Report List.",
+        icon: "question",
         showCancelButton: true,
         confirmButtonColor: "#d33",
         cancelButtonColor: "#3085d6",
-        confirmButtonText: "Delete",
+        confirmButtonText: "Continue",
       });
       if (!result.isConfirmed) return;
 
-      // show loading
       Swal.fire({
-        title: "Deleting...",
+        title: "Applying...",
         allowOutsideClick: false,
         showConfirmButton: false,
         didOpen: () => Swal.showLoading(),
       });
 
-      await deleteDoc(doc(db, "resolvedReports", report.id));
+      // Check if user already removed it in their Report Log.
+      // We assume the report has 'uid' of the owner.
+      const ownerUid = report.uid;
+      const hideDocId = `${ownerUid}_${report.id}`;
+      const hideDocRef = doc(db, "userResolvedHides", hideDocId);
+      const hideSnap = await getDoc(hideDocRef);
 
-      Swal.close();
-      Swal.fire({
-        title: "Deleted",
-        text: "The report has been permanently deleted.",
-        icon: "success",
-        timer: 1200,
-        showConfirmButton: false,
-      });
+      if (hideSnap.exists()) {
+        // Both parties removed → HARD DELETE from DB
+        await deleteDoc(doc(db, "resolvedReports", report.id));
+
+        // (Optional) also remove the hide marker:
+        // await deleteDoc(hideDocRef);
+
+        Swal.close();
+        await Swal.fire({
+          title: "Deleted",
+          text:
+            "The report is deleted successfully",
+          icon: "success",
+          timer: 1400,
+          showConfirmButton: false,
+        });
+      } else {
+        // Admin removed first → just hide from Admin list
+        await setDoc(
+          doc(db, "resolvedReports", report.id),
+          {
+            hiddenForAdmin: true,
+            hiddenForAdminAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        Swal.close();
+        await Swal.fire({
+          title: "Removed Report",
+          text:
+            "This report is succesfully removed from the Resolved Report List",
+          icon: "success",
+          timer: 1500,
+          showConfirmButton: false,
+        });
+      }
     } catch (err) {
-      console.error("[ResolvedReports] delete error:", err);
+      console.error("[ResolvedReports] delete/hide error:", err);
       Swal.close();
-      Swal.fire("Error", "Failed to delete the report.", "error");
+      Swal.fire("Error", "Failed to remove the report.", "error");
     }
   };
 
@@ -206,7 +252,10 @@ const ResolvedReports = () => {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={COLS} className="border-black border-2 p-4 text-center text-gray-500">
+                  <td
+                    colSpan={COLS}
+                    className="border-black border-2 p-4 text-center text-gray-500"
+                  >
                     {allowedTypes.length === 0
                       ? "No reports available for your role."
                       : search
@@ -217,9 +266,15 @@ const ResolvedReports = () => {
               ) : (
                 filtered.map((r) => (
                   <tr key={r.id}>
-                    <td className="border-black border-2 p-2 text-center">{r.buildingName || "—"}</td>
-                    <td className="border-black border-2 p-2 text-center">{r.floorLocation || "—"}</td>
-                    <td className="border-black border-2 p-2 text-center">{r.additionalDetails || "—"}</td>
+                    <td className="border-black border-2 p-2 text-center">
+                      {r.buildingName || "—"}
+                    </td>
+                    <td className="border-black border-2 p-2 text-center">
+                      {r.floorLocation || "—"}
+                    </td>
+                    <td className="border-black border-2 p-2 text-center">
+                      {r.additionalDetails || "—"}
+                    </td>
                     <td className="border-black border-2 p-2 text-center">
                       {formatDateTime(r.serverTimeStamp)}
                     </td>
@@ -231,9 +286,10 @@ const ResolvedReports = () => {
                           <button
                             onClick={() => handleDelete(r)}
                             className="flex justify-center items-center bg-red-500 px-3 py-3 rounded text-white font-semibold gap-1 hover:bg-red-600 transition-colors"
-                            title="Delete permanently"
+                            title="Remove (soft-hide or delete if user also removed)"
                           >
-                            <Trash2 />Delete
+                            <Trash2 />
+                            Remove
                           </button>
                         </div>
                       </td>

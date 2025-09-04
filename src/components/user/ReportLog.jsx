@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ArrowDown } from 'lucide-react';
 import { db } from '../../config/firebase';
 import {
-  collection, getDocs, query, where, doc, setDoc, serverTimestamp,
+  collection, getDocs, query, where, doc, setDoc, serverTimestamp,deleteDoc
 } from 'firebase/firestore';
 import Swal from 'sweetalert2';
 
@@ -167,66 +167,80 @@ const ReportLog = () => {
 
   // Hide a resolved report for THIS user only
   const removeFromMyLog = async (report) => {
-    const isResolved = (report.status || '').toLowerCase() === 'resolved';
-    if (!isResolved) {
-      await Swal.fire({
-        title: 'Not allowed',
-        text: 'You can only remove items that are already Resolved.',
-        icon: 'info',
-      });
-      return;
+  const isResolved = (report.status || '').toLowerCase() === 'resolved';
+  if (!isResolved) {
+    await Swal.fire({
+      title: 'Not allowed',
+      text: 'You can only remove items that are already Resolved.',
+      icon: 'info',
+    });
+    return;
+  }
+
+  try {
+    const result = await Swal.fire({
+      title: 'Remove from your log?',
+      text: 'This action will remove this report from your Report Log.',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Remove',
+      cancelButtonText: 'Cancel',
+    });
+    if (!result.isConfirmed) return;
+
+    Swal.fire({
+      title: 'Applying...',
+      allowOutsideClick: false,
+      showConfirmButton: false,
+      didOpen: () => Swal.showLoading(),
+    });
+
+    const hideId = `${uid}_${report.id}`;
+    const hideRef = doc(db, 'userResolvedHides', hideId);
+
+    // Always write the user hide marker
+    await setDoc(hideRef, {
+      uid,
+      reportId: report.id,
+      createdAt: serverTimestamp(),
+    });
+
+    // If admin already hid it, now both removed -> HARD DELETE
+    if (report.hiddenForAdmin) {
+      await deleteDoc(doc(db, 'resolvedReports', report.id));
+
+      // Optional cleanup: remove your hide marker too
+      // await deleteDoc(hideRef);
     }
 
-    try {
-      const result = await Swal.fire({
-        title: 'Remove from your log?',
-        text: 'This will remove the report from you Report Log.',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Remove',
-        cancelButtonText: 'Cancel',
-      });
-      if (!result.isConfirmed) return;
+    Swal.close();
+    await Swal.fire({
+      title: report.hiddenForAdmin ? 'Deleted' : 'Removed',
+      text: report.hiddenForAdmin
+        ? 'The report is successfully removed from your Report Log.'
+        : 'The report is successfully removed from your Report Log.',
+      icon: 'success',
+      timer: 1400,
+      showConfirmButton: false,
+    });
 
-      Swal.fire({
-        title: 'Applying...',
-        allowOutsideClick: false,
-        showConfirmButton: false,
-        didOpen: () => Swal.showLoading(),
-      });
+    // Update local UI immediately
+    setHiddenSet(prev => {
+      const next = new Set(prev);
+      next.add(report.id);
+      return next;
+    });
+  } catch (error) {
+    console.error('Error hiding/deleting report:', error);
+    Swal.close();
+    Swal.fire({
+      title: 'Error!',
+      text: 'Failed to remove the report from your log.',
+      icon: 'error',
+    });
+  }
+};
 
-      const hideId = `${uid}_${report.id}`;
-      await setDoc(doc(db, 'userResolvedHides', hideId), {
-        uid,
-        reportId: report.id,
-        createdAt: serverTimestamp(),
-      });
-
-      Swal.close();
-      await Swal.fire({
-        title: 'Removed',
-        text: 'This resolved report is removed successfully.',
-        icon: 'success',
-        timer: 1200,
-        showConfirmButton: false,
-      });
-
-      // Update local UI immediately
-      setHiddenSet(prev => {
-        const next = new Set(prev);
-        next.add(report.id);
-        return next;
-      });
-    } catch (error) {
-      console.error('Error hiding report:', error);
-      Swal.close();
-      Swal.fire({
-        title: 'Error!',
-        text: 'Failed to remove the report from your log.',
-        icon: 'error',
-      });
-    }
-  };
 
   return (
     <div className="w-full">
