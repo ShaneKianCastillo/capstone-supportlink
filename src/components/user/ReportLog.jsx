@@ -2,23 +2,44 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ArrowDown } from 'lucide-react';
 import { db } from '../../config/firebase';
 import {
-  collection, getDocs, query, where, deleteDoc, doc
+  collection, getDocs, query, where, doc, setDoc, serverTimestamp,
 } from 'firebase/firestore';
 import Swal from 'sweetalert2';
 
 const ReportLog = () => {
   const [isOpen, setIsOpen] = useState(null);
-  const [reportList, setReportList] = useState([]);
+  const [allReports, setAllReports] = useState([]); // merged raw list
+  const [hiddenSet, setHiddenSet] = useState(new Set()); // reportIds hidden by this user (resolved only)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // NEW: status filter
-  const [statusFilter, setStatusFilter] = useState('All'); // 'All' | 'Pending' | 'On Process' | 'Resolved'
+  // status filter: 'All' | 'Pending' | 'On Process' | 'Resolved'
+  const [statusFilter, setStatusFilter] = useState('All');
 
   const userReportRef      = collection(db, 'userReport');
   const onProcessRef       = collection(db, 'onProcess');
   const resolvedReportsRef = collection(db, 'resolvedReports');
 
+  const uid = (localStorage.getItem('uid') || '').trim();
+
+  // Load per-user hidden resolved IDs
+  useEffect(() => {
+    const loadHides = async () => {
+      try {
+        if (!uid) return;
+        const snap = await getDocs(
+          query(collection(db, 'userResolvedHides'), where('uid', '==', uid))
+        );
+        const ids = new Set(snap.docs.map(d => d.data().reportId));
+        setHiddenSet(ids);
+      } catch (e) {
+        console.error('[ReportLog] load hides error:', e);
+      }
+    };
+    loadHides();
+  }, [uid]);
+
+  // Load reports from all three collections (for this user)
   useEffect(() => {
     const MIN_SPINNER_MS = 500;
     const start = Date.now();
@@ -28,15 +49,13 @@ const ReportLog = () => {
         setLoading(true);
         setError(null);
 
-        const uid = (localStorage.getItem('uid') || '').trim();
         if (!uid) {
-          setReportList([]);
+          setAllReports([]);
           const elapsed = Date.now() - start;
           setTimeout(() => setLoading(false), Math.max(0, MIN_SPINNER_MS - elapsed));
           return;
         }
 
-        // fetch from all three collections
         const [snapUserReport, snapOnProcess, snapResolved] = await Promise.all([
           getDocs(query(userReportRef, where('uid', '==', uid))),
           getDocs(query(onProcessRef,  where('uid', '==', uid))),
@@ -59,23 +78,20 @@ const ReportLog = () => {
           _collection: 'resolvedReports', // Resolved
         }));
 
-        // merge and sort by resolvedAt -> processedAt -> serverTimeStamp
         const merged = [...rowsUserReport, ...rowsOnProcess, ...rowsResolved];
         merged.sort((a, b) => {
           const ta =
             a.resolvedAt?.toMillis?.() ??
             a.processedAt?.toMillis?.() ??
-            a.serverTimeStamp?.toMillis?.() ??
-            0;
+            a.serverTimeStamp?.toMillis?.() ?? 0;
           const tb =
             b.resolvedAt?.toMillis?.() ??
             b.processedAt?.toMillis?.() ??
-            b.serverTimeStamp?.toMillis?.() ??
-            0;
+            b.serverTimeStamp?.toMillis?.() ?? 0;
           return tb - ta; // newest first
         });
 
-        setReportList(merged);
+        setAllReports(merged);
       } catch (err) {
         console.error('[ReportLog] fetch error:', err);
         setError('Failed to load reports.');
@@ -86,54 +102,37 @@ const ReportLog = () => {
     };
 
     load();
-  }, []);
+  }, [uid]);
 
-  const deleteReport = async (report) => {
+  // Visible list = hide resolved items that this user chose to hide
+  const reportList = useMemo(() => {
+    if (!hiddenSet.size) return allReports;
+    return allReports.filter(r => {
+      const status = (r.status || '').toLowerCase();
+      if (status !== 'resolved') return true;
+      return !hiddenSet.has(r.id);
+    });
+  }, [allReports, hiddenSet]);
+
+  const formatDateTime = (ts) => {
     try {
-      const result = await Swal.fire({
-        title: 'Are you sure?',
-        text: "You won't be able to revert this!",
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#3085d6',
-        cancelButtonColor: '#d33',
-        confirmButtonText: 'Yes, delete it!',
+      const d =
+        ts && typeof ts.toDate === "function" ? ts.toDate()
+          : ts instanceof Date ? ts
+          : null;
+      if (!d) return "—";
+      return d.toLocaleString(undefined, {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
       });
-      if (!result.isConfirmed) return;
-
-      Swal.fire({
-        title: 'Deleting...',
-        text: 'Please wait while we delete the report.',
-        allowOutsideClick: false,
-        showConfirmButton: false,
-        didOpen: () => Swal.showLoading(),
-      });
-
-      const colName = report._collection || 'userReport';
-      await deleteDoc(doc(db, colName, report.id));
-
-      Swal.close();
-      await Swal.fire({
-        title: 'Deleted!',
-        text: 'Your file has been deleted.',
-        icon: 'success',
-        timer: 1200,
-        showConfirmButton: false,
-      });
-
-      setReportList(prev => prev.filter(r => !(r.id === report.id && r._collection === colName)));
-    } catch (error) {
-      console.error('Error deleting report:', error);
-      Swal.close();
-      Swal.fire({
-        title: 'Error!',
-        text: 'Failed to delete the report.',
-        icon: 'error',
-      });
+    } catch {
+      return "—";
     }
   };
 
-  // Colored status chip
   const StatusChip = ({ status }) => {
     const s = (status || '').toLowerCase();
     const bg =
@@ -148,7 +147,7 @@ const ReportLog = () => {
     );
   };
 
-  // NEW: compute counts & filtered list
+  // Counts (visible items only)
   const counts = useMemo(() => {
     let pending = 0, onproc = 0, resolved = 0;
     for (const r of reportList) {
@@ -165,6 +164,69 @@ const ReportLog = () => {
     const wanted = statusFilter.toLowerCase();
     return reportList.filter(r => (r.status || '').toLowerCase() === wanted);
   }, [statusFilter, reportList]);
+
+  // Hide a resolved report for THIS user only
+  const removeFromMyLog = async (report) => {
+    const isResolved = (report.status || '').toLowerCase() === 'resolved';
+    if (!isResolved) {
+      await Swal.fire({
+        title: 'Not allowed',
+        text: 'You can only remove items that are already Resolved.',
+        icon: 'info',
+      });
+      return;
+    }
+
+    try {
+      const result = await Swal.fire({
+        title: 'Remove from your log?',
+        text: 'This will remove the report from you Report Log.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Remove',
+        cancelButtonText: 'Cancel',
+      });
+      if (!result.isConfirmed) return;
+
+      Swal.fire({
+        title: 'Applying...',
+        allowOutsideClick: false,
+        showConfirmButton: false,
+        didOpen: () => Swal.showLoading(),
+      });
+
+      const hideId = `${uid}_${report.id}`;
+      await setDoc(doc(db, 'userResolvedHides', hideId), {
+        uid,
+        reportId: report.id,
+        createdAt: serverTimestamp(),
+      });
+
+      Swal.close();
+      await Swal.fire({
+        title: 'Removed',
+        text: 'This resolved report is removed successfully.',
+        icon: 'success',
+        timer: 1200,
+        showConfirmButton: false,
+      });
+
+      // Update local UI immediately
+      setHiddenSet(prev => {
+        const next = new Set(prev);
+        next.add(report.id);
+        return next;
+      });
+    } catch (error) {
+      console.error('Error hiding report:', error);
+      Swal.close();
+      Swal.fire({
+        title: 'Error!',
+        text: 'Failed to remove the report from your log.',
+        icon: 'error',
+      });
+    }
+  };
 
   return (
     <div className="w-full">
@@ -263,9 +325,14 @@ const ReportLog = () => {
                 </div>
               </div>
 
-              <div className="flex justify-center bg-red-600 mt-3 py-2 rounded text-white cursor-pointer hover:bg-red-700">
-                <button onClick={() => deleteReport(report)}>Remove Report</button>
-              </div>
+              {/* Remove button ONLY for Resolved */}
+              {(report.status || '').toLowerCase() === 'resolved' && (
+                <div className="flex justify-center bg-red-600 mt-3 py-2 rounded text-white cursor-pointer hover:bg-red-700">
+                  <button onClick={() => removeFromMyLog(report)}>
+                    Remove from My Log
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         ))}
