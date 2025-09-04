@@ -141,7 +141,7 @@ const RequestLog = () => {
       {/* Filter + Download Row */}
       <div className="w-full flex justify-between items-center mt-3">
         {/* Filter dropdown */}
-        <div className="flex items-center gap-2">
+        <div className="flex-col items-center gap-2">
           <label htmlFor="statusFilter" className="text-sm font-semibold">
             Filter by status:
           </label>
