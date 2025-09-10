@@ -28,17 +28,30 @@ const ResolvedReports = () => {
 
   // roles → allowed service types & hide actions for assistant admins
   const allowedTypesForRole = (role) => {
-    if (role === "CSD Admin" || role === "CSD Asst. Admin") {
-      return ["Facilities and Maintenance"];
+    switch (role) {
+      case "CSD Admin":
+      case "CSD Asst. Admin":
+        return ["Facilities and Maintenance"];
+
+      case "MIS Admin":
+      case "MIS Asst. Admin":
+        return ["IT Support Services - Software"];
+
+      case "IT Support Specialist":
+        return ["IT Support Services - Hardware"];
+
+      case "Admin":
+        return [
+          "Facilities and Maintenance",
+          "IT Support Services - Hardware",
+          "IT Support Services - Software",
+        ];
+
+      default:
+        return [];
     }
-    if (role === "MIS Admin" || role === "MIS Asst. Admin") {
-      return ["IT Support Services"];
-    }
-    if (role === "Admin") {
-      return ["Facilities and Maintenance", "IT Support Services"];
-    }
-    return [];
   };
+
   const allowedTypes = allowedTypesForRole(myRole);
 
   const hideActions =
@@ -77,8 +90,8 @@ const ResolvedReports = () => {
         ts && typeof ts.toDate === "function"
           ? ts.toDate()
           : ts instanceof Date
-          ? ts
-          : null;
+            ? ts
+            : null;
       if (!d) return "—";
       return d.toLocaleString(undefined, {
         year: "numeric",
@@ -243,7 +256,7 @@ const ResolvedReports = () => {
                 <th className="border-black border-2 p-2 text-center">Building</th>
                 <th className="border-black border-2 p-2 text-center">Floor Location</th>
                 <th className="border-black border-2 p-2 text-center">Description</th>
-                <th className="border-black border-2 p-2 text-center">Date Submitted</th>
+                <th className="border-black border-2 p-2 text-center">Date Resolved</th>
                 {!hideActions && (
                   <th className="border-black border-2 p-2 text-center">Action</th>
                 )}
@@ -259,8 +272,8 @@ const ResolvedReports = () => {
                     {allowedTypes.length === 0
                       ? "No reports available for your role."
                       : search
-                      ? "No matching reports."
-                      : "No resolved reports yet."}
+                        ? "No matching reports."
+                        : "No resolved reports yet."}
                   </td>
                 </tr>
               ) : (
@@ -276,7 +289,7 @@ const ResolvedReports = () => {
                       {r.additionalDetails || "—"}
                     </td>
                     <td className="border-black border-2 p-2 text-center">
-                      {formatDateTime(r.serverTimeStamp)}
+                       {formatDateTime(r.resolvedAt || r.serverTimeStamp)}
                     </td>
 
                     {/* Actions (hidden for assistant admins) */}

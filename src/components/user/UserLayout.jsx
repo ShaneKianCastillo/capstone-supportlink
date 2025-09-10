@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import logo from '../../assets/logo.png';
-import { AlignJustify, X, FilePenLine, BotMessageSquare, ScrollText, UserPen, LogOut } from 'lucide-react';
+import { AlignJustify, X, FilePenLine, ScrollText, UserPen, LogOut } from 'lucide-react';
 import ReportModule from './ReportModule';
-import ChatBot from './ChatBot';
 import ReportLog from './ReportLog';
 import Profile from './Profile';
 import {auth} from "../../config/firebase";
@@ -55,7 +54,6 @@ const UserLayout = ({ setRole }) => {
   const renderContent = () => {
     switch (currentView) {
       case 'report':     return <ReportModule />;
-      case 'chatbot':    return <ChatBot />;
       case 'report-log': return <ReportLog />;
       case 'profile':    return <Profile setRole={setRole} />;
       default:           return <ReportModule />;
@@ -73,7 +71,7 @@ const UserLayout = ({ setRole }) => {
           ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
-       {/* Replace logo with user info */}
+        {/* User info */}
         <div className="p-4 pl-8 border-b border-gray-700 flex justify-between items-center lg:justify-start">
           <div className="flex flex-col">
             <h1 className="font-bold text-lg">{profile.name || '—'}</h1>
@@ -97,14 +95,7 @@ const UserLayout = ({ setRole }) => {
                 <FilePenLine />Create Report
               </button>
             </li>
-            <li>
-              <button
-                onClick={() => navigateTo('chatbot')}
-                className={`block p-2 rounded flex items-center gap-2 hover:bg-blue-500 w-full text-left ${currentView === 'chatbot' ? 'bg-blue-500' : ''}`}
-              >
-                <BotMessageSquare />Chat Bot
-              </button>
-            </li>
+
             <li>
               <button
                 onClick={() => navigateTo('report-log')}
@@ -113,6 +104,7 @@ const UserLayout = ({ setRole }) => {
                 <ScrollText />Report Log
               </button>
             </li>
+
             <li>
               <button
                 onClick={() => navigateTo('profile')}
@@ -121,6 +113,7 @@ const UserLayout = ({ setRole }) => {
                 <UserPen />Profile
               </button>
             </li>
+
             <li>
               <button
                 onClick={handleLogout}
@@ -154,7 +147,6 @@ const UserLayout = ({ setRole }) => {
 
           <h1 className="text-white text-base sm:text-xl font-semibold font-medium">
             {currentView === 'report' && 'Manual Report'}
-            {currentView === 'chatbot' && 'Chat Bot'}
             {currentView === 'report-log' && 'Report Log'}
             {currentView === 'profile' && 'Profile'}
           </h1>
@@ -163,10 +155,10 @@ const UserLayout = ({ setRole }) => {
         </div>
       </header>
 
-      {/* Main content area: fixed between header and footer */}
+      {/* Main content area */}
       <main
         className="
-          fixed left-0 right-0 top-20 bottom-20 overflow-auto
+          fixed left-0 right-0 top-20 bottom-0 overflow-auto
           lg:ml-64
         "
       >
@@ -174,11 +166,6 @@ const UserLayout = ({ setRole }) => {
           {renderContent()}
         </div>
       </main>
-
-      {/* Footer (fixed) */}
-      <footer className="fixed bottom-0 left-0 right-0 bg-[#0A1936] h-20 flex items-center justify-center text-white z-30 lg:ml-64">
-        <h1 className="text-base sm:text-lg font-bold">DCT SupportLink</h1>
-      </footer>
     </div>
   );
 };

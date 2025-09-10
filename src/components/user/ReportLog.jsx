@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ArrowDown } from 'lucide-react';
 import { db } from '../../config/firebase';
 import {
-  collection, getDocs, query, where, doc, setDoc, serverTimestamp,deleteDoc
+  collection, getDocs, query, where, doc, setDoc, serverTimestamp, deleteDoc
 } from 'firebase/firestore';
 import Swal from 'sweetalert2';
 
@@ -21,6 +21,11 @@ const ReportLog = () => {
   const resolvedReportsRef = collection(db, 'resolvedReports');
 
   const uid = (localStorage.getItem('uid') || '').trim();
+
+  // image preview modal (for both original & resolution thumbnails)
+  const [imgPreviewUrl, setImgPreviewUrl] = useState(null);
+  const openPreview = (url) => url && setImgPreviewUrl(url);
+  const closePreview = () => setImgPreviewUrl(null);
 
   // Load per-user hidden resolved IDs
   useEffect(() => {
@@ -104,7 +109,7 @@ const ReportLog = () => {
     load();
   }, [uid]);
 
-  // Visible list = hide resolved items that this user chose to hide
+  // Visible list = hide resolved items this user chose to hide
   const reportList = useMemo(() => {
     if (!hiddenSet.size) return allReports;
     return allReports.filter(r => {
@@ -167,80 +172,76 @@ const ReportLog = () => {
 
   // Hide a resolved report for THIS user only
   const removeFromMyLog = async (report) => {
-  const isResolved = (report.status || '').toLowerCase() === 'resolved';
-  if (!isResolved) {
-    await Swal.fire({
-      title: 'Not allowed',
-      text: 'You can only remove items that are already Resolved.',
-      icon: 'info',
-    });
-    return;
-  }
-
-  try {
-    const result = await Swal.fire({
-      title: 'Remove from your log?',
-      text: 'This action will remove this report from your Report Log.',
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonText: 'Remove',
-      cancelButtonText: 'Cancel',
-    });
-    if (!result.isConfirmed) return;
-
-    Swal.fire({
-      title: 'Applying...',
-      allowOutsideClick: false,
-      showConfirmButton: false,
-      didOpen: () => Swal.showLoading(),
-    });
-
-    const hideId = `${uid}_${report.id}`;
-    const hideRef = doc(db, 'userResolvedHides', hideId);
-
-    // Always write the user hide marker
-    await setDoc(hideRef, {
-      uid,
-      reportId: report.id,
-      createdAt: serverTimestamp(),
-    });
-
-    // If admin already hid it, now both removed -> HARD DELETE
-    if (report.hiddenForAdmin) {
-      await deleteDoc(doc(db, 'resolvedReports', report.id));
-
-      // Optional cleanup: remove your hide marker too
-      // await deleteDoc(hideRef);
+    const isResolved = (report.status || '').toLowerCase() === 'resolved';
+    if (!isResolved) {
+      await Swal.fire({
+        title: 'Not allowed',
+        text: 'You can only remove items that are already Resolved.',
+        icon: 'info',
+      });
+      return;
     }
 
-    Swal.close();
-    await Swal.fire({
-      title: report.hiddenForAdmin ? 'Deleted' : 'Removed',
-      text: report.hiddenForAdmin
-        ? 'The report is successfully removed from your Report Log.'
-        : 'The report is successfully removed from your Report Log.',
-      icon: 'success',
-      timer: 1400,
-      showConfirmButton: false,
-    });
+    try {
+      const result = await Swal.fire({
+        title: 'Remove from your log?',
+        text: 'This action will remove this report from your Report Log.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Remove',
+        cancelButtonText: 'Cancel',
+      });
+      if (!result.isConfirmed) return;
 
-    // Update local UI immediately
-    setHiddenSet(prev => {
-      const next = new Set(prev);
-      next.add(report.id);
-      return next;
-    });
-  } catch (error) {
-    console.error('Error hiding/deleting report:', error);
-    Swal.close();
-    Swal.fire({
-      title: 'Error!',
-      text: 'Failed to remove the report from your log.',
-      icon: 'error',
-    });
-  }
-};
+      Swal.fire({
+        title: 'Applying...',
+        allowOutsideClick: false,
+        showConfirmButton: false,
+        didOpen: () => Swal.showLoading(),
+      });
 
+      const hideId = `${uid}_${report.id}`;
+      const hideRef = doc(db, 'userResolvedHides', hideId);
+
+      // Always write the user hide marker
+      await setDoc(hideRef, {
+        uid,
+        reportId: report.id,
+        createdAt: serverTimestamp(),
+      });
+
+      // If admin already hid it, now both removed -> HARD DELETE
+      if (report.hiddenForAdmin) {
+        await deleteDoc(doc(db, 'resolvedReports', report.id));
+        // Optional cleanup: remove your hide marker too
+        // await deleteDoc(hideRef);
+      }
+
+      Swal.close();
+      await Swal.fire({
+        title: report.hiddenForAdmin ? 'Deleted' : 'Removed',
+        text: 'The report is successfully removed from your Report Log.',
+        icon: 'success',
+        timer: 1400,
+        showConfirmButton: false,
+      });
+
+      // Update local UI immediately
+      setHiddenSet(prev => {
+        const next = new Set(prev);
+        next.add(report.id);
+        return next;
+      });
+    } catch (error) {
+      console.error('Error hiding/deleting report:', error);
+      Swal.close();
+      Swal.fire({
+        title: 'Error!',
+        text: 'Failed to remove the report from your log.',
+        icon: 'error',
+      });
+    }
+  };
 
   return (
     <div className="w-full">
@@ -295,62 +296,133 @@ const ReportLog = () => {
         )}
 
         {/* List */}
-        {!loading && !error && filteredList.map((report, index) => (
-          <div key={`${report._collection}:${report.id}`} className="w-full rounded overflow-hidden mb-4">
-            {/* Header */}
-            <div
-              className="h-10 rounded flex justify-between items-center bg-[#0A1936] px-3 cursor-pointer select-none"
-              onClick={() => setIsOpen(isOpen === index ? null : index)}
-            >
-              {/* Left: Status chip */}
-              <div className="flex items-center gap-2">
-                <StatusChip status={report.status} />
-              </div>
-
-              {/* Right: text + chevron */}
-              <span className="text-white flex justify-center items-center gap-1">
-                {isOpen === index ? 'Hide Details' : 'View Details'}
-                <ArrowDown
-                  className={`transform transition-transform duration-300 ${isOpen === index ? 'rotate-180' : ''}`}
-                />
-              </span>
-            </div>
-
-            {/* Collapsible Panel */}
-            <div
-              className={`transition-all duration-500 ease-in-out overflow-hidden bg-white border rounded text-gray-800 px-4
-                ${isOpen === index ? 'max-h-[1000px] py-3' : 'max-h-0 py-0'}
-              `}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="space-y-1">
-                  <p className="text-md font-semibold">Building Name: {report.buildingName}</p>
-                  <p className="text-md font-semibold">Floor Location: {report.floorLocation}</p>
-                  <p className="text-md font-semibold">Service Type: {report.serviceType}</p>
+        {!loading && !error && filteredList.map((report, index) => {
+          const isResolved = (report.status || '').toLowerCase() === 'resolved';
+          return (
+            <div key={`${report._collection}:${report.id}`} className="w-full rounded overflow-hidden mb-4">
+              {/* Header */}
+              <div
+                className="h-10 rounded flex justify-between items-center bg-[#0A1936] px-3 cursor-pointer select-none"
+                onClick={() => setIsOpen(isOpen === index ? null : index)}
+              >
+                {/* Left: Status chip */}
+                <div className="flex items-center gap-2">
+                  <StatusChip status={report.status} />
                 </div>
 
-                {/* Thumbnail */}
-                <div className="bg-[#0A1936] p-2 rounded shrink-0">
-                  <img
-                    src={report.imageUrl || ''}
-                    alt="Report"
-                    className="h-[70px] w-[100px] object-cover rounded"
+                {/* Right: text + chevron */}
+                <span className="text-white flex justify-center items-center gap-1">
+                  {isOpen === index ? 'Hide Details' : 'View Details'}
+                  <ArrowDown
+                    className={`transform transition-transform duration-300 ${isOpen === index ? 'rotate-180' : ''}`}
                   />
-                </div>
+                </span>
               </div>
 
-              {/* Remove button ONLY for Resolved */}
-              {(report.status || '').toLowerCase() === 'resolved' && (
-                <div className="flex justify-center bg-red-600 mt-3 py-2 rounded text-white cursor-pointer hover:bg-red-700">
-                  <button onClick={() => removeFromMyLog(report)}>
-                    Remove from My Log
-                  </button>
+              {/* Collapsible Panel */}
+              <div
+                className={`transition-all duration-500 ease-in-out overflow-hidden bg-white border rounded text-gray-800 px-4
+                  ${isOpen === index ? 'max-h-[2000px] py-3' : 'max-h-0 py-0'}
+                `}
+              >
+                {/* Top meta fields */}
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <p className="text-md font-semibold">Building Name: {report.buildingName || '—'}</p>
+                    <p className="text-md font-semibold">Floor Location: {report.floorLocation || '—'}</p>
+                    <p className="text-md font-semibold">Service Type: {report.serviceType || '—'}</p>
+                    <p className="text-md font-semibold">
+                      Platform / System Name: {report.platformName || report.systemName || report.platform || '—'}
+                    </p>
+                  </div>
+
+                  {/* Right: original thumbnail (click to preview) */}
+                  <div className="bg-[#0A1936] p-2 rounded shrink-0">
+                    <img
+                      src={report.imageUrl || ''}
+                      alt="Report"
+                      className="h-[70px] w-[100px] object-cover rounded cursor-pointer"
+                      onClick={() => openPreview(report.imageUrl)}
+                    />
+                  </div>
                 </div>
-              )}
+
+                {/* Report Details (always) */}
+                <div className="mt-4">
+                  <h4 className="text-sm font-semibold text-gray-600 tracking-wide">Report Details</h4>
+                  <div className="mt-2 text-sm">
+                    <span className="font-semibold">Other Details: </span>
+                    {report.additionalDetails || '—'}
+                  </div>
+                  {/* ⬇️ No big original image here anymore */}
+                </div>
+
+                {/* Resolution section (only when resolved) */}
+                {isResolved && (
+                  <>
+                    <hr className="my-5 border-gray-200" />
+
+                    {/* Resolution header + small thumbnail on the right */}
+                    <div className="flex items-start justify-between gap-4">
+                      {/* Minimalist header line */}
+                      <div className="text-xs sm:text-sm text-gray-700 flex flex-wrap items-center gap-x-2">
+                        <span className="font-semibold">{report.resolvedByName || '—'}</span>
+                        <span className="text-gray-400">•</span>
+                        <span>{report.resolvedByDept || '—'}</span>
+                        <span className="text-gray-400">•</span>
+                        <span>{formatDateTime(report.resolvedAt)}</span>
+                      </div>
+
+                      {/* Resolution thumbnail (same style as original) */}
+                      <div className="bg-[#0A1936] p-2 rounded shrink-0">
+                        {report.resolvedImageUrl ? (
+                          <img
+                            src={report.resolvedImageUrl}
+                            alt="Resolution"
+                            className="h-[70px] w-[100px] object-cover rounded cursor-pointer"
+                            onClick={() => openPreview(report.resolvedImageUrl)}
+                          />
+                        ) : (
+                          <div className="h-[70px] w-[100px] rounded bg-[#0A1936] flex items-center justify-center text-[10px] text-white/70">
+                            No image
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Resolution notes */}
+                    <div className="mt-3 text-sm">
+                      <span className="font-semibold">Resolution Summary: </span>
+                      {report.resolutionNotes || '—'}
+                    </div>
+
+                    {/* Remove button ONLY for Resolved */}
+                    <div className="flex justify-center bg-red-600 mt-4 py-2 rounded text-white cursor-pointer hover:bg-red-700">
+                      <button onClick={() => removeFromMyLog(report)}>
+                        Remove from My Log
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+
+      {/* Full-screen image preview */}
+      {imgPreviewUrl && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center"
+          onClick={closePreview}
+        >
+          <img
+            src={imgPreviewUrl}
+            alt="Preview"
+            className="max-h-[90%] max-w-[90%] rounded shadow-2xl"
+          />
+        </div>
+      )}
     </div>
   );
 };

@@ -11,6 +11,7 @@ const adminRoles = [
   'CSD Admin',
   'MIS Asst. Admin',
   'CSD Asst. Admin',
+  'IT Support Specialist'
 ];
 
 const App = () => {

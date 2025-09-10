@@ -110,6 +110,7 @@ const AddUser = ({ open, setOpen }) => {
             <option value="MIS Asst. Admin">MIS Asst. Admin</option>
             <option value="CSD Asst. Admin">CSD Asst. Admin</option>
             <option value="Property Custodian">Property Custodian</option>
+            <option value="IT Support Specialist">IT Support Specialist</option>
           </select>
           <input
             onChange={(e) => setDepartment(e.target.value)}

@@ -140,9 +140,9 @@ const Profile = ({setRole}) => {
       </div>
 
       {/* Footer */}
-      <div className='bg-[#0A1936] w-screen h-20 fixed bottom-0 flex justify-center items-center text-white'>
+      {/* <div className='bg-[#0A1936] w-screen h-20 fixed bottom-0 flex justify-center items-center text-white'>
         <h1 className='text-lg font-bold'>DCT SupportLink</h1>
-      </div>
+      </div> */}
 
       {/* Modals */}
       <EditProfile open={open} setOpen={setOpen} />

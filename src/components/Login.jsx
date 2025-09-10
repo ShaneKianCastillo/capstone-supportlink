@@ -27,7 +27,8 @@ const Login = ({ setRole }) => {
     'MIS Admin',
     'CSD Admin',
     'MIS Asst. Admin',
-    'CSD Asst. Admin'
+    'CSD Asst. Admin',
+    'IT Support Specialist'
   ];
 
   if (adminRoles.includes(storedRole)) {

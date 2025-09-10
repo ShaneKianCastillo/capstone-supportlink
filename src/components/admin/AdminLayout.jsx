@@ -302,9 +302,9 @@ const AdminLayout = ({ setRole }) => {
         </div>
       </main>
 
-      <footer className="fixed bottom-0 left-0 right-0 bg-[#0A1936] h-20 flex items-center justify-center text-white z-30 lg:ml-64">
+      {/* <footer className="fixed bottom-0 left-0 right-0 bg-[#0A1936] h-20 flex items-center justify-center text-white z-30 lg:ml-64">
         <h1 className="text-base sm:text-lg font-bold">DCT SupportLink</h1>
-      </footer>
+      </footer> */}
 
       {/* Change Password modal from user components */}
       <ChangePassword

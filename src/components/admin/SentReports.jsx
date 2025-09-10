@@ -8,11 +8,67 @@ import {
   doc,
   writeBatch,
   serverTimestamp,
-  updateDoc,           // 👈 add this
+  updateDoc,
 } from "firebase/firestore";
-import Swal from "sweetalert2"; // 👈 add this
+import Swal from "sweetalert2";
 
 const SentReports = () => {
+  // --- service types & office labels
+  const SERVICE_TYPES = [
+    "Facilities and Maintenance",
+    "IT Support Services - Hardware",
+    "IT Support Services - Software",
+  ];
+
+  const officeLabelFor = (serviceType) => {
+    switch (serviceType) {
+      case "Facilities and Maintenance":
+        return "CSD Office";
+      case "IT Support Services - Hardware":
+        return "MIS — Hardware Office";
+      case "IT Support Services - Software":
+        return "MIS — Software Office";
+      default:
+        return "Target Office";
+    }
+  };
+
+  // Viewer modes for modal content
+  const VIEW = { FM: "FM", HW: "HW", SW: "SW" };
+
+  // Which field set to show for this viewer (by role). Admin adapts to ticket’s current type.
+  const viewModeFor = (role, serviceType) => {
+    switch (role) {
+      case "CSD Admin":
+      case "CSD Asst. Admin":
+        return VIEW.FM;
+      case "IT Support Specialist":
+        return VIEW.HW;
+      case "MIS Admin":
+      case "MIS Asst. Admin":
+        return VIEW.SW;
+      case "Admin":
+        if (serviceType === "Facilities and Maintenance") return VIEW.FM;
+        if (serviceType === "IT Support Services - Hardware") return VIEW.HW;
+        return VIEW.SW;
+      default:
+        if (serviceType === "Facilities and Maintenance") return VIEW.FM;
+        if (serviceType === "IT Support Services - Hardware") return VIEW.HW;
+        return VIEW.SW;
+    }
+  };
+
+  // Small badge UI
+  const badgeForType = (serviceType) => {
+    const base =
+      "inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold";
+    if (serviceType === "Facilities and Maintenance")
+      return `${base} bg-emerald-100 text-emerald-800`;
+    if (serviceType === "IT Support Services - Hardware")
+      return `${base} bg-indigo-100 text-indigo-800`;
+    return `${base} bg-amber-100 text-amber-800`; // Software
+  };
+
   const [reports, setReports] = useState([]);
   const [usersById, setUsersById] = useState({});
   const [loadingReports, setLoadingReports] = useState(true);
@@ -46,16 +102,24 @@ const SentReports = () => {
 
   // role → allowed service types
   const allowedTypesForRole = (role) => {
-    if (role === "CSD Admin" || role === "CSD Asst. Admin") {
-      return ["Facilities and Maintenance"];
+    switch (role) {
+      case "CSD Admin":
+      case "CSD Asst. Admin":
+        return ["Facilities and Maintenance"];
+      case "MIS Admin":
+      case "MIS Asst. Admin":
+        return ["IT Support Services - Software"];
+      case "IT Support Specialist":
+        return ["IT Support Services - Hardware"];
+      case "Admin": // super admin sees all
+        return [
+          "Facilities and Maintenance",
+          "IT Support Services - Software",
+          "IT Support Services - Hardware",
+        ];
+      default:
+        return []; // others see none on this admin page
     }
-    if (role === "MIS Admin" || role === "MIS Asst. Admin") {
-      return ["IT Support Services"];
-    }
-    if (role === "Admin") {
-      return ["Facilities and Maintenance", "IT Support Services"]; // super admin sees all
-    }
-    return []; // others see none on this admin page
   };
   const allowedTypes = allowedTypesForRole(myRole);
 
@@ -78,7 +142,7 @@ const SentReports = () => {
     return () => unsub();
   }, []);
 
-  // Live list of reports
+  // Live list of reports  <-- fixed: no extra parenthesis
   useEffect(() => {
     const unsub = onSnapshot(
       query(collection(db, "userReport")),
@@ -185,53 +249,42 @@ const SentReports = () => {
     }
   };
 
-  // ➜ FORWARD report between departments by toggling serviceType in userReport
-  const forwardTargetForRole = (role) => {
-    if (role === "CSD Admin" || role === "CSD Asst. Admin") {
-      return {
-        label: "MIS Office",
-        serviceType: "IT Support Services",
-      };
-    }
-    if (role === "MIS Admin" || role === "MIS Asst. Admin") {
-      return {
-        label: "CSD Office",
-        serviceType: "Facilities and Maintenance",
-      };
-    }
-    // Admin → flip to the "other" side (based on current serviceType)
-    return { label: null, serviceType: null };
-  };
-
+  // ➜ FORWARD report between departments by selecting any service type
   const handleForward = async (report) => {
     if (!report?.id) return;
 
-    // figure out where to forward
-    let target = forwardTargetForRole(myRole);
+    // radio choices = any service type except the current one
+    const choices = SERVICE_TYPES.filter(
+      (t) => t !== (report.serviceType || "")
+    );
 
-    // super Admin: flip target by current report.serviceType
-    if (myRole === "Admin") {
-      if (report.serviceType === "Facilities and Maintenance") {
-        target = { label: "MIS Office", serviceType: "IT Support Services" };
-      } else {
-        target = { label: "CSD Office", serviceType: "Facilities and Maintenance" };
-      }
-    }
+    const inputOptions = {};
+    choices.forEach((t) => {
+      inputOptions[t] =
+        t === "Facilities and Maintenance"
+          ? "Facilities & Maintenance (CSD)"
+          : t === "IT Support Services - Hardware"
+          ? "IT Support — Hardware (MIS)"
+          : "IT Support — Software (MIS)";
+    });
 
-    // if no target (unsupported role), do nothing
-    if (!target.serviceType) return;
-
-    // if already at target type, no need to forward
-    if ((report.serviceType || "") === target.serviceType) return;
-
-    const confirmText =
-      target.label === "MIS Office"
-        ? "Are you sure you want to forward this Report to the MIS Office?"
-        : "Are you sure you want to forward this Report to the CSD Office?";
-
-    const result = await Swal.fire({
+    const { value: pickedType, isConfirmed } = await Swal.fire({
       title: "Forward Report",
-      text: confirmText,
+      input: "radio",
+      inputOptions,
+      inputValidator: (v) =>
+        !v ? "Please select a destination category." : undefined,
+      showCancelButton: true,
+      confirmButtonText: "Forward",
+    });
+    if (!isConfirmed) return;
+
+    if (pickedType === report.serviceType) return;
+
+    const targetOffice = officeLabelFor(pickedType);
+    const result = await Swal.fire({
+      title: "Confirm Forward",
+      text: `Forward this report to ${targetOffice} as "${pickedType}"?`,
       icon: "question",
       showCancelButton: true,
       confirmButtonText: "Yes, forward",
@@ -242,25 +295,22 @@ const SentReports = () => {
     try {
       setForwardingId(report.id);
 
-      // show loading
       Swal.fire({
         title: "Forwarding...",
-        text: "Sending the report to the other department.",
+        text: "Reassigning the report to the selected office.",
         allowOutsideClick: false,
         showConfirmButton: false,
         didOpen: () => Swal.showLoading(),
       });
 
-      // update serviceType in place
+      // Only the serviceType changes; other fields are preserved
       const ref = doc(db, "userReport", report.id);
-      await updateDoc(ref, {
-        serviceType: target.serviceType,
-      });
+      await updateDoc(ref, { serviceType: pickedType });
 
       Swal.close();
       await Swal.fire({
         title: "Forwarded",
-        text: `Report forwarded to ${target.label}.`,
+        text: `Report forwarded to ${targetOffice}.`,
         icon: "success",
         timer: 1200,
         showConfirmButton: false,
@@ -290,9 +340,7 @@ const SentReports = () => {
 
       {/* Empty */}
       {!loading && filtered.length === 0 && (
-        <div className="mt-6 text-gray-600">
-          No reports found for your role.
-        </div>
+        <div className="mt-6 text-gray-600">No reports found for your role.</div>
       )}
 
       {/* List */}
@@ -308,7 +356,8 @@ const SentReports = () => {
                 {formatDateTime(r.serverTimeStamp)}
               </p>
 
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
+                <span className={badgeForType(r.serviceType)}>{r.serviceType}</span>
                 <button
                   onClick={() => openModal(r)}
                   className="font-semibold underline underline-offset-4"
@@ -320,7 +369,9 @@ const SentReports = () => {
                   onClick={() => handleForward(r)}
                   disabled={forwardingId === r.id}
                   className={`p-2 rounded transition-colors ${
-                    forwardingId === r.id ? "opacity-60 cursor-not-allowed" : "hover:bg-white/10"
+                    forwardingId === r.id
+                      ? "opacity-60 cursor-not-allowed"
+                      : "hover:bg-white/10"
                   }`}
                   aria-label="Forward to the other department"
                 >
@@ -336,10 +387,7 @@ const SentReports = () => {
       {open && selected && (
         <div className="fixed inset-0 flex items-center justify-center z-50 pt-10">
           {/* Backdrop */}
-          <div
-            onClick={() => setOpen(false)}
-            className="absolute inset-0 bg-black/50"
-          />
+          <div onClick={() => setOpen(false)} className="absolute inset-0 bg-black/50" />
 
           {/* Panel */}
           <div
@@ -354,7 +402,12 @@ const SentReports = () => {
               <X size={20} />
             </button>
 
-            <h2 className="text-xl font-bold mb-4">Report Details</h2>
+            <h2 className="text-xl font-bold mb-1">Report Details</h2>
+            <div className="mb-3">
+              <span className={badgeForType(selected.serviceType)}>
+                {selected.serviceType || "—"}
+              </span>
+            </div>
 
             {/* User line */}
             <div className="text-sm text-gray-600 mb-4">
@@ -378,31 +431,59 @@ const SentReports = () => {
               </div>
             )}
 
-            {/* Fields */}
-            <div className="space-y-2 text-sm">
-              <div>
-                <span className="font-semibold">Building Name:</span>{" "}
-                {selected.buildingName || "—"}
-              </div>
-              <div>
-                <span className="font-semibold">Floor Location:</span>{" "}
-                {selected.floorLocation || "—"}
-              </div>
-              <div>
-                <span className="font-semibold">Service Type:</span>{" "}
-                {selected.serviceType || "—"}
-              </div>
-              <div>
-                <span className="font-semibold">Other Details:</span>{" "}
-                {selected.additionalDetails || "—"}
-              </div>
-            </div>
+            {/* Fields (role-adaptive) */}
+            {(() => {
+              const mode = viewModeFor(myRole, selected.serviceType);
+
+              // common fields (always show)
+              const common = (
+                <>
+                  <div>
+                    <span className="font-semibold">Other Details:</span>{" "}
+                    {selected.additionalDetails || "—"}
+                  </div>
+                </>
+              );
+
+              if (mode === VIEW.SW) {
+                // Software office view: show platform/system only (plus common)
+                const platform =
+                  selected.platformName ||
+                  selected.systemName ||
+                  selected.platform ||
+                  "—";
+                return (
+                  <div className="space-y-2 text-sm">
+                    <div>
+                      <span className="font-semibold">Platform / System Name:</span>{" "}
+                      {platform}
+                    </div>
+                    {common}
+                  </div>
+                );
+              }
+
+              // Hardware or Facilities office view: show building & floor (plus common)
+              return (
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <span className="font-semibold">Building Name:</span>{" "}
+                    {selected.buildingName || "—"}
+                  </div>
+                  <div>
+                    <span className="font-semibold">Floor / Room Location:</span>{" "}
+                    {selected.floorLocation || "—"}
+                  </div>
+                  {common}
+                </div>
+              );
+            })()}
 
             <div className="pt-5">
               <button
                 onClick={() => handleProcess(selected)}
                 disabled={processing}
-                className={`bg-[#F2B611] text-white p-2 w-full rounded hover:bg-yellow-400 disabled:opacity-60 disabled:cursor-not-allowed`}
+                className="bg-[#F2B611] text-white p-2 w-full rounded hover:bg-yellow-400 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {processing ? "Processing..." : "Process"}
               </button>
@@ -410,14 +491,12 @@ const SentReports = () => {
           </div>
 
           {/* Slide animation */}
-          <style>
-            {`
-              @keyframes slideIn {
-                from { opacity: 0; transform: translateY(-50px); }
-                to   { opacity: 1; transform: translateY(0); }
-              }
-            `}
-          </style>
+          <style>{`
+            @keyframes slideIn {
+              from { opacity: 0; transform: translateY(-50px); }
+              to   { opacity: 1; transform: translateY(0); }
+            }
+          `}</style>
 
           {/* Full image overlay */}
           {showImageFull && selected?.imageUrl && (
