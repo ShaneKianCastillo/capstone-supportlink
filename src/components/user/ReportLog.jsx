@@ -2,7 +2,15 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ArrowDown } from 'lucide-react';
 import { db } from '../../config/firebase';
 import {
-  collection, getDocs, query, where, doc, setDoc, serverTimestamp, deleteDoc
+  collection,
+  getDocs,
+  query,
+  where,
+  doc,
+  setDoc,
+  serverTimestamp,
+  deleteDoc,
+  updateDoc,           // 👈 NEW
 } from 'firebase/firestore';
 import Swal from 'sweetalert2';
 
@@ -26,6 +34,29 @@ const ReportLog = () => {
   const [imgPreviewUrl, setImgPreviewUrl] = useState(null);
   const openPreview = (url) => url && setImgPreviewUrl(url);
   const closePreview = () => setImgPreviewUrl(null);
+
+  // ---------- EDIT MODAL STATE ----------
+  const [editOpen, setEditOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editReport, setEditReport] = useState(null); // original pending report being edited
+
+  // form fields
+  const SERVICE_TYPES = [
+    'Facilities and Maintenance',
+    'IT Support Services - Hardware',
+    'IT Support Services - Software',
+  ];
+  const [svcType, setSvcType] = useState('');
+  const [buildingName, setBuildingName] = useState('');
+  const [floorLocation, setFloorLocation] = useState('');
+  const [platformName, setPlatformName] = useState('');
+  const [additionalDetails, setAdditionalDetails] = useState('');
+  const [currentImageUrl, setCurrentImageUrl] = useState(''); // existing image in DB
+  const [newImageFile, setNewImageFile] = useState(null);     // newly chosen file (if any)
+
+  // hidden file inputs for upload/take
+  const fileInputId = 'edit-file-upload';
+  const cameraInputId = 'edit-file-camera';
 
   // Load per-user hidden resolved IDs
   useEffect(() => {
@@ -122,19 +153,19 @@ const ReportLog = () => {
   const formatDateTime = (ts) => {
     try {
       const d =
-        ts && typeof ts.toDate === "function" ? ts.toDate()
+        ts && typeof ts.toDate === 'function' ? ts.toDate()
           : ts instanceof Date ? ts
           : null;
-      if (!d) return "—";
+      if (!d) return '—';
       return d.toLocaleString(undefined, {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
       });
     } catch {
-      return "—";
+      return '—';
     }
   };
 
@@ -243,6 +274,143 @@ const ReportLog = () => {
     }
   };
 
+  // ---------- EDIT HANDLERS ----------
+  const openEdit = (report) => {
+    setEditReport(report);
+    setSvcType(report.serviceType || '');
+    setBuildingName(report.buildingName || '');
+    setFloorLocation(report.floorLocation || '');
+    setPlatformName(report.platformName || report.systemName || report.platform || '');
+    setAdditionalDetails(report.additionalDetails || '');
+    setCurrentImageUrl(report.imageUrl || '');
+    setNewImageFile(null);
+    setEditOpen(true);
+  };
+
+  const closeEdit = () => {
+    if (saving) return;
+    setEditOpen(false);
+    setEditReport(null);
+    setNewImageFile(null);
+  };
+
+  const validateEdit = () => {
+    if (!svcType) return 'Please choose a service type.';
+    const type = svcType;
+    const isSW = type === 'IT Support Services - Software';
+    const hasImg = !!(newImageFile || currentImageUrl);
+
+    if (!hasImg) return 'Please attach an image.';
+
+    if (isSW) {
+      if (!platformName.trim()) return 'Please enter the Platform / System Name.';
+    } else {
+      if (!buildingName.trim()) return 'Please enter the Building Name.';
+      if (!floorLocation.trim()) return 'Please enter the Floor / Room Location.';
+    }
+    return null;
+  };
+
+  const uploadToCloudinary = async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', 'supportlink'); // same preset you used
+    try {
+      const res = await fetch('https://api.cloudinary.com/v1_1/dsycysb0e/image/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (data?.secure_url) return data.secure_url;
+      throw new Error('Upload failed');
+    } catch (e) {
+      console.error('Upload error:', e);
+      return null;
+    }
+  };
+
+  const saveEdit = async () => {
+    if (!editReport?.id) return;
+    const err = validateEdit();
+    if (err) {
+      await Swal.fire('Missing info', err, 'info');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      Swal.fire({
+        title: 'Saving...',
+        allowOutsideClick: false,
+        showConfirmButton: false,
+        didOpen: () => Swal.showLoading(),
+      });
+
+      // image: use new if provided
+      let finalImageUrl = currentImageUrl;
+      if (newImageFile) {
+        const uploaded = await uploadToCloudinary(newImageFile);
+        if (!uploaded) {
+          Swal.close();
+          await Swal.fire('Upload failed', 'Could not upload the image. Try again.', 'error');
+          setSaving(false);
+          return;
+        }
+        finalImageUrl = uploaded;
+      }
+
+      const isSW = svcType === 'IT Support Services - Software';
+
+      const updatePayload = {
+        serviceType: svcType,
+        additionalDetails: additionalDetails || '',
+        imageUrl: finalImageUrl || '',
+        lastEditedAt: serverTimestamp(),
+      };
+
+      if (isSW) {
+        updatePayload.platformName = platformName || '';
+        // clear FM/HW fields
+        updatePayload.buildingName = null;
+        updatePayload.floorLocation = null;
+      } else {
+        updatePayload.buildingName = buildingName || '';
+        updatePayload.floorLocation = floorLocation || '';
+        // clear SW field
+        updatePayload.platformName = null;
+      }
+
+      // Only editable if it's still in 'userReport'
+      await updateDoc(doc(db, 'userReport', editReport.id), updatePayload);
+
+      Swal.close();
+      await Swal.fire({
+        title: 'Updated',
+        text: 'Your report has been updated.',
+        icon: 'success',
+        timer: 1200,
+        showConfirmButton: false,
+      });
+
+      closeEdit();
+
+      // Refresh list in-place (optional: re-fetch; here we mutate local)
+      setAllReports(prev =>
+        prev.map(r =>
+          r._collection === 'userReport' && r.id === editReport.id
+            ? { ...r, ...updatePayload }
+            : r
+        )
+      );
+    } catch (e) {
+      console.error('[ReportLog] saveEdit error:', e);
+      Swal.close();
+      Swal.fire('Error', 'Failed to update the report.', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="w-full">
       {/* LOADING OVERLAY */}
@@ -298,6 +466,9 @@ const ReportLog = () => {
         {/* List */}
         {!loading && !error && filteredList.map((report, index) => {
           const isResolved = (report.status || '').toLowerCase() === 'resolved';
+          const isPending  = (report.status || '').toLowerCase() === 'pending';
+          const isEditable = isPending && report._collection === 'userReport'; // only pending in userReport can be edited
+
           return (
             <div key={`${report._collection}:${report.id}`} className="w-full rounded overflow-hidden mb-4">
               {/* Header */}
@@ -322,7 +493,7 @@ const ReportLog = () => {
               {/* Collapsible Panel */}
               <div
                 className={`transition-all duration-500 ease-in-out overflow-hidden bg-white border rounded text-gray-800 px-4
-                  ${isOpen === index ? 'max-h-[2000px] py-3' : 'max-h-0 py-0'}
+                  ${isOpen === index ? 'max-h-[2200px] py-3' : 'max-h-0 py-0'}
                 `}
               >
                 {/* Top meta fields */}
@@ -330,7 +501,7 @@ const ReportLog = () => {
                   <div className="space-y-1">
                     <p className="text-md font-semibold">Building Name: {report.buildingName || '—'}</p>
                     <p className="text-md font-semibold">Floor Location: {report.floorLocation || '—'}</p>
-                    <p className="text-md font-semibold">Service Tpe: {report.serviceType || '—'}</p>
+                    <p className="text-md font-semibold">Service Type: {report.serviceType || '—'}</p>
                     <p className="text-md font-semibold">
                       Platform / System Name: {report.platformName || report.systemName || report.platform || '—'}
                     </p>
@@ -354,7 +525,6 @@ const ReportLog = () => {
                     <span className="font-semibold">Other Details: </span>
                     {report.additionalDetails || '—'}
                   </div>
-                  {/* ⬇️ No big original image here anymore */}
                 </div>
 
                 {/* Resolution section (only when resolved) */}
@@ -395,14 +565,28 @@ const ReportLog = () => {
                       <span className="font-semibold">Resolution Summary: </span>
                       {report.resolutionNotes || '—'}
                     </div>
-
-                    {/* Remove button ONLY for Resolved */}
-                    <div className="flex justify-center bg-red-600 mt-4 py-2 rounded text-white cursor-pointer hover:bg-red-700">
-                      <button onClick={() => removeFromMyLog(report)}>
-                        Remove from My Log
-                      </button>
-                    </div>
                   </>
+                )}
+
+                {/* Edit button for Pending */}
+                {isEditable && (
+                  <div className="mt-4 flex justify-center">
+                    <button
+                      className="px-4 py-2 rounded bg-[#0A1936] text-white font-semibold hover:bg-[#122751]"
+                      onClick={() => openEdit(report)}
+                    >
+                      Edit Report
+                    </button>
+                  </div>
+                )}
+
+                {/* Remove button ONLY for Resolved */}
+                {(report.status || '').toLowerCase() === 'resolved' && (
+                  <div className="flex justify-center bg-red-600 mt-4 py-2 rounded text-white cursor-pointer hover:bg-red-700">
+                    <button onClick={() => removeFromMyLog(report)}>
+                      Remove from My Log
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -421,6 +605,173 @@ const ReportLog = () => {
             alt="Preview"
             className="max-h-[90%] max-w-[90%] rounded shadow-2xl"
           />
+        </div>
+      )}
+
+      {/* ---------- EDIT MODAL ---------- */}
+      {editOpen && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={closeEdit} />
+          <div className="relative bg-white w-full max-w-lg rounded-2xl shadow-xl p-5">
+            <h3 className="text-lg font-semibold mb-3">Edit Report</h3>
+
+            {/* Service type */}
+            <div className="mb-3">
+              <label className="block text-sm font-semibold mb-1">Service Type</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {SERVICE_TYPES.map((t) => (
+                  <label
+                    key={t}
+                    className={`border rounded px-3 py-2 text-sm cursor-pointer ${
+                      svcType === t ? 'border-[#0A1936] ring-1 ring-[#0A1936]' : 'border-gray-300'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="svcType"
+                      className="mr-2"
+                      checked={svcType === t}
+                      onChange={() => setSvcType(t)}
+                    />
+                    {t}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Conditional fields */}
+            {svcType === 'IT Support Services - Software' ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Platform / System Name</label>
+                  <input
+                    type="text"
+                    value={platformName}
+                    onChange={(e) => setPlatformName(e.target.value)}
+                    className="w-full border border-black rounded px-3 py-2 text-sm"
+                    placeholder="e.g., LMS, Library System"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Building Name</label>
+                  <input
+                    type="text"
+                    value={buildingName}
+                    onChange={(e) => setBuildingName(e.target.value)}
+                    className="w-full border border-black rounded px-3 py-2 text-sm"
+                    placeholder="Enter building name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Floor / Room Location</label>
+                  <input
+                    type="text"
+                    value={floorLocation}
+                    onChange={(e) => setFloorLocation(e.target.value)}
+                    className="w-full border border-black rounded px-3 py-2 text-sm"
+                    placeholder="Enter floor/room"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Image picker */}
+            <div className="mt-3">
+              <label className="block text-sm font-semibold mb-1">Image</label>
+
+              {/* current or new preview (small) */}
+              <div className="flex items-center gap-3">
+                <div className="bg-[#0A1936] p-2 rounded">
+                  <img
+                    src={newImageFile ? URL.createObjectURL(newImageFile) : (currentImageUrl || '')}
+                    alt="Preview"
+                    className="h-[70px] w-[100px] object-cover rounded"
+                  />
+                </div>
+                {newImageFile && (
+                  <button
+                    type="button"
+                    onClick={() => setNewImageFile(null)}
+                    className="text-sm underline"
+                  >
+                    Remove new image
+                  </button>
+                )}
+              </div>
+
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => document.getElementById(fileInputId)?.click()}
+                  className="px-3 py-2 rounded border text-sm hover:bg-gray-50"
+                >
+                  Upload Photo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => document.getElementById(cameraInputId)?.click()}
+                  className="px-3 py-2 rounded border text-sm hover:bg-gray-50"
+                >
+                  Take Photo
+                </button>
+
+                <input
+                  id={fileInputId}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) setNewImageFile(f);
+                  }}
+                />
+                <input
+                  id={cameraInputId}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) setNewImageFile(f);
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Other details */}
+            <div className="mt-3">
+              <label className="block text-sm font-semibold mb-1">Other Details</label>
+              <textarea
+                rows={3}
+                value={additionalDetails}
+                onChange={(e) => setAdditionalDetails(e.target.value)}
+                className="w-full border border-black rounded px-3 py-2 text-sm"
+                placeholder="Describe the issue..."
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                className="px-4 py-2 rounded border hover:bg-gray-50"
+                onClick={closeEdit}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded bg-[#0A1936] text-white font-semibold hover:bg-[#122751] disabled:opacity-60"
+                onClick={saveEdit}
+                disabled={saving}
+              >
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

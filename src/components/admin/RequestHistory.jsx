@@ -7,6 +7,8 @@ import {
   doc,
   deleteDoc,
   query,
+  where,
+  updateDoc,
 } from "firebase/firestore";
 import Swal from "sweetalert2";
 
@@ -16,20 +18,90 @@ const RequestHistory = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError]   = useState(null);
 
-  // Status filter: same UX as ReportLog
-  const [statusFilter, setStatusFilter] = useState("All"); 
-  // Possible statuses now: Pending (default), On Process (future), Approved/Declined (future)
+  // filter
+  const [statusFilter, setStatusFilter] = useState("All");
 
+  // who am I
+  const uid    = (localStorage.getItem("uid") || "").trim();
+  const myRole = (localStorage.getItem("role") || "").trim();
+
+  // group pairing (admins <-> assistants)
+  const roleGroupFor = (role) => {
+    const r = role.toLowerCase();
+    if (r === "mis admin" || r === "mis asst. admin") {
+      return ["MIS Admin", "MIS Asst. Admin"];
+    }
+    if (r === "csd admin" || r === "csd asst. admin") {
+      return ["CSD Admin", "CSD Asst. Admin"];
+    }
+    // Everyone else: only themselves
+    return null;
+  };
+
+  // we’ll derive allowed UIDs for the query
+  const [allowedUids, setAllowedUids] = useState([uid]); // default to self
+  const [uidsReady, setUidsReady] = useState(false);
+
+  // Phase 1: compute allowed UID set based on role pairing
   useEffect(() => {
+    const group = roleGroupFor(myRole);
+    if (!group) {
+      // only self
+      setAllowedUids([uid]);
+      setUidsReady(true);
+      return;
+    }
+
+    // subscribe to users with roles in the group; collect their IDs
+    const usersRef = collection(db, "users");
+    const unsub = onSnapshot(
+      query(usersRef, where("role", "in", group)),
+      (snap) => {
+        const ids = new Set();
+        snap.forEach((d) => ids.add(d.id));
+        if (!ids.size && uid) ids.add(uid); // fallback to self
+        setAllowedUids(Array.from(ids));
+        setUidsReady(true);
+      },
+      (err) => {
+        console.error("[RequestHistory] users group load error:", err);
+        // fallback to self only
+        setAllowedUids([uid]);
+        setUidsReady(true);
+      }
+    );
+    return () => unsub();
+  }, [uid, myRole]);
+
+  // Phase 2: subscribe to assetRequests with correct visibility
+  useEffect(() => {
+    if (!uidsReady) return;
+
     setLoading(true);
     setError(null);
 
-    const q = query(collection(db, "assetRequests"));
+    // Build query: if we have multiple uids, use 'in', else '=='
+    let qRef;
+    const baseRef = collection(db, "assetRequests");
+
+    if (!allowedUids?.length) {
+      // nothing to show
+      setReqList([]);
+      setLoading(false);
+      return;
+    }
+
+    if (allowedUids.length === 1) {
+      qRef = query(baseRef, where("uid", "==", allowedUids[0]));
+    } else {
+      // Firestore 'in' supports up to 10 values — our groups are 2, so fine.
+      qRef = query(baseRef, where("uid", "in", allowedUids));
+    }
+
     const unsub = onSnapshot(
-      q,
+      qRef,
       (snap) => {
         const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        // sort by resolved/processed/serverTimeStamp (if those arrive later)
         rows.sort((a, b) => {
           const ta =
             a.resolvedAt?.toMillis?.() ??
@@ -47,7 +119,7 @@ const RequestHistory = () => {
         setLoading(false);
       },
       (err) => {
-        console.error("[RequestHistory] onSnapshot error:", err);
+        console.error("[RequestHistory] assetRequests onSnapshot error:", err);
         setError("Failed to load asset requests.");
         setReqList([]);
         setLoading(false);
@@ -55,7 +127,7 @@ const RequestHistory = () => {
     );
 
     return () => unsub();
-  }, []);
+  }, [uidsReady, allowedUids]);
 
   const deleteRequest = async (req) => {
     try {
@@ -130,7 +202,7 @@ const RequestHistory = () => {
     );
   };
 
-  // Counters
+  // Counts
   const counts = useMemo(() => {
     let pending = 0,
       onproc = 0,
@@ -143,21 +215,136 @@ const RequestHistory = () => {
       else if (s === "approved") approved++;
       else if (s === "declined") declined++;
     }
-    return {
-      pending,
-      onproc,
-      approved,
-      declined,
-      all: reqList.length,
-    };
+    return { pending, onproc, approved, declined, all: reqList.length };
   }, [reqList]);
 
-  // Filtered list by status
+  // Filtered
   const filteredList = useMemo(() => {
     if (statusFilter === "All") return reqList;
     const wanted = statusFilter.toLowerCase();
     return reqList.filter((r) => (r.status || "").toLowerCase() === wanted);
   }, [statusFilter, reqList]);
+
+  // ---------- EDIT (Pending + must be the owner) ----------
+  const [editOpen, setEditOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editReq, setEditReq] = useState(null);
+
+  const [assetName, setAssetName] = useState("");
+  const [reason, setReason] = useState("");
+  const [currentImageUrl, setCurrentImageUrl] = useState("");
+  const [newImageFile, setNewImageFile] = useState(null);
+
+  const openEdit = (req) => {
+    setEditReq(req);
+    setAssetName(req.assetName || "");
+    setReason(req.reason || "");
+    setCurrentImageUrl(req.imageUrl || "");
+    setNewImageFile(null);
+    setEditOpen(true);
+  };
+  const closeEdit = () => {
+    if (saving) return;
+    setEditOpen(false);
+    setEditReq(null);
+    setNewImageFile(null);
+  };
+
+  const uploadToCloudinary = async (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", "supportlink");
+    try {
+      const res = await fetch(
+        "https://api.cloudinary.com/v1_1/dsycysb0e/image/upload",
+        { method: "POST", body: formData }
+      );
+      const data = await res.json();
+      if (data?.secure_url) return data.secure_url;
+      throw new Error("Upload failed");
+    } catch (e) {
+      console.error("[RequestHistory] upload error:", e);
+      return null;
+    }
+  };
+
+  const saveEdit = async () => {
+    if (!editReq?.id) return;
+
+    if (!assetName.trim() || !reason.trim()) {
+      await Swal.fire("Missing info", "Asset name and reason are required.", "info");
+      return;
+    }
+    const hasImage = !!(newImageFile || currentImageUrl);
+    if (!hasImage) {
+      await Swal.fire("Missing image", "Please attach an image.", "info");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      Swal.fire({
+        title: "Saving...",
+        allowOutsideClick: false,
+        showConfirmButton: false,
+        didOpen: () => Swal.showLoading(),
+      });
+
+      let finalImageUrl = currentImageUrl;
+      if (newImageFile) {
+        const uploaded = await uploadToCloudinary(newImageFile);
+        if (!uploaded) {
+          Swal.close();
+          await Swal.fire("Upload failed", "Could not upload the image. Try again.", "error");
+          setSaving(false);
+          return;
+        }
+        finalImageUrl = uploaded;
+      }
+
+      await updateDoc(doc(db, "assetRequests", editReq.id), {
+        assetName,
+        reason,
+        imageUrl: finalImageUrl || "",
+        // we could add lastEditedAt here if you want
+      });
+
+      Swal.close();
+      await Swal.fire({
+        title: "Updated",
+        text: "Your asset request has been updated.",
+        icon: "success",
+        timer: 1200,
+        showConfirmButton: false,
+      });
+
+      // update UI locally
+      setReqList((prev) =>
+        prev.map((r) =>
+          r.id === editReq.id ? { ...r, assetName, reason, imageUrl: finalImageUrl } : r
+        )
+      );
+      closeEdit();
+    } catch (e) {
+      console.error("[RequestHistory] saveEdit error:", e);
+      Swal.close();
+      Swal.fire("Error", "Failed to update the request.", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const canRemove = (req) => {
+    const isApproved = (req.status || "").toLowerCase() === "approved";
+    const isAdmin = myRole === "MIS Admin" || myRole === "CSD Admin";
+    return isApproved && isAdmin;
+  };
+
+  const canEdit = (req) => {
+    const isPending = (req.status || "").toLowerCase() === "pending";
+    const isOwner = req.uid === uid;
+    return isPending && isOwner;
+  };
 
   return (
     <div className="w-full">
@@ -172,10 +359,10 @@ const RequestHistory = () => {
           </div>
         </div>
       )}
-      <h1 className="text-2xl sm:text-3xl font-semibold mb-3">Request History</h1>
-      <div className="mx-auto w-full max-w-lg sm:max-w-xl md:max-w-2xl lg:max-w-3xl xl:max-w-4xl px-4 sm:px-6 lg:px-8 py-6">
-        
 
+      <h1 className="text-2xl sm:text-3xl font-semibold mb-3">Request History</h1>
+
+      <div className="mx-auto w-full max-w-lg sm:max-w-xl md:max-w-2xl lg:max-w-3xl xl:max-w-4xl px-4 sm:px-6 lg:px-8 py-6">
         {/* Controls: Filter + counts */}
         <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -264,32 +451,159 @@ const RequestHistory = () => {
                     />
                   </div>
                 </div>
-                {/* If declined with a message, show "View Message" */}
-                {(req.status || "").toLowerCase() === "declined" && (req.declineReason || "").trim() && (
+
+                {/* Declined message */}
+                {(req.status || "").toLowerCase() === "declined" &&
+                  (req.declineReason || "").trim() && (
+                    <div className="mt-3">
+                      <button
+                        onClick={() =>
+                          Swal.fire({
+                            title: "Decline Reason",
+                            text: req.declineReason,
+                            icon: "info",
+                          })
+                        }
+                        className="px-3 py-2 border rounded hover:bg-gray-100 transition-colors"
+                      >
+                        View Message
+                      </button>
+                    </div>
+                  )}
+
+                {/* Edit (Pending + owner only) */}
+                {canEdit(req) && (
                   <div className="mt-3">
                     <button
-                      onClick={() =>
-                        Swal.fire({
-                          title: "Decline Reason",
-                          text: req.declineReason,
-                          icon: "info",
-                        })
-                      }
-                      className="px-3 py-2 border rounded hover:bg-gray-100 transition-colors"
+                      onClick={() => openEdit(req)}
+                      className="px-4 py-2 rounded bg-[#0A1936] text-white font-semibold hover:bg-[#122751]"
                     >
-                      View Message
+                      Edit Request
                     </button>
                   </div>
                 )}
 
-                {/* Delete (admin history page) */}
-                <div className="flex justify-center bg-red-600 mt-3 py-2 rounded text-white cursor-pointer hover:bg-red-700">
-                  <button onClick={() => deleteRequest(req)}>Remove Request</button>
-                </div>
+                {/* Remove (Approved + only MIS Admin / CSD Admin) */}
+                {canRemove(req) && (
+                  <div className="flex justify-center bg-red-600 mt-3 py-2 rounded text-white cursor-pointer hover:bg-red-700">
+                    <button onClick={() => deleteRequest(req)}>Remove Request</button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
       </div>
+
+      {/* EDIT MODAL */}
+      {editOpen && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={closeEdit} />
+          <div className="relative bg-white w-full max-w-lg rounded-2xl shadow-xl p-5">
+            <h3 className="text-lg font-semibold mb-3">Edit Asset Request</h3>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-semibold mb-1">Asset Name</label>
+                <input
+                  type="text"
+                  className="w-full border border-black rounded px-3 py-2 text-sm"
+                  value={assetName}
+                  onChange={(e) => setAssetName(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">Reason</label>
+                <textarea
+                  rows={3}
+                  className="w-full border border-black rounded px-3 py-2 text-sm"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                />
+              </div>
+
+              {/* Image */}
+              <div>
+                <label className="block text-sm font-semibold mb-1">Image</label>
+                <div className="flex items-center gap-3">
+                  <div className="bg-[#0A1936] p-2 rounded">
+                    <img
+                      src={newImageFile ? URL.createObjectURL(newImageFile) : (currentImageUrl || "")}
+                      alt="Preview"
+                      className="h-[70px] w-[100px] object-cover rounded"
+                    />
+                  </div>
+                  {newImageFile && (
+                    <button
+                      type="button"
+                      onClick={() => setNewImageFile(null)}
+                      className="text-sm underline"
+                    >
+                      Remove new image
+                    </button>
+                  )}
+                </div>
+
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById("asset-file-input")?.click()}
+                    className="px-3 py-2 rounded border text-sm hover:bg-gray-50"
+                  >
+                    Upload Photo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById("asset-camera-input")?.click()}
+                    className="px-3 py-2 rounded border text-sm hover:bg-gray-50"
+                  >
+                    Take Photo
+                  </button>
+
+                  <input
+                    id="asset-file-input"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) setNewImageFile(f);
+                    }}
+                  />
+                  <input
+                    id="asset-camera-input"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) setNewImageFile(f);
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                className="px-4 py-2 rounded border hover:bg-gray-50"
+                onClick={closeEdit}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded bg-[#0A1936] text-white font-semibold hover:bg-[#122751] disabled:opacity-60"
+                onClick={saveEdit}
+                disabled={saving}
+              >
+                {saving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

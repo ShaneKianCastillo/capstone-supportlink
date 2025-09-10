@@ -1,5 +1,10 @@
+// src/components/.../ChatBot.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { BotMessageSquare } from "lucide-react";
+
+// 🔹 import Firestore + your db
+import { db } from "../../config/firebase";
+import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 
 const NOTE =
   'NOTE: If any step is not possible in your room (or the issue persists), please submit a manual report and choose the service type "IT Support Services." Do NOT open the system unit.';
@@ -94,31 +99,60 @@ const ChatBot = ({ embedded = false }) => {
   const [isReplying, setIsReplying] = useState(false);
   const endRef = useRef(null);
 
-  // ✅ JS version (no TS generics)
+  // mobile tab
   const [mobileTab, setMobileTab] = useState("issues");
 
-  const questions = useMemo(() => PRESET_QA.map((x) => x.q), []);
+  // 🔹 custom presets from Firestore (admin-added)
+  const [customQA, setCustomQA] = useState([]); // [{ q, a:[] }]
+
+  // subscribe to presets in Firestore
+  useEffect(() => {
+    const unsub = onSnapshot(
+      query(collection(db, "chatbotPresets"), orderBy("createdAt", "desc")),
+      (snap) => {
+        const rows = snap.docs.map((d) => {
+          const data = d.data();
+          return {
+            q: data.question || "",
+            a: Array.isArray(data.answers) ? data.answers : [],
+          };
+        });
+        setCustomQA(rows);
+      },
+      (err) => {
+        console.error("[ChatBot] presets subscribe error:", err);
+        setCustomQA([]);
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  // merged list: DB first (editable by admins) then static defaults
+  const mergedQA = useMemo(() => [...customQA, ...PRESET_QA], [customQA]);
+
+  const questions = useMemo(() => mergedQA.map((x) => x.q), [mergedQA]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isReplying]);
 
   const handlePick = (q) => {
-    if (isReplying) return;
+  if (isReplying) return;
 
-    setMessages((prev) => [...prev, { from: "user", text: q }]);
-    setIsReplying(true);
+  setMessages((prev) => [...prev, { from: "user", text: q }]);
+  setIsReplying(true);
 
-    const match = PRESET_QA.find((x) => x.q === q);
-    const botText = (match?.a || ["Please select a valid question.", NOTE]).join("\n");
+  const match = mergedQA.find((x) => x.q === q);
+  const botText = (match?.a || ["Please select a valid question.", NOTE]).join("\n");
 
-    setMobileTab("chat"); // switch to conversation on mobile
+  setMobileTab("chat"); // switch to conversation on mobile
 
-    setTimeout(() => {
-      setMessages((prev) => [...prev, { from: "bot", text: botText }]);
-      setIsReplying(false);
-    }, 320);
-  };
+  setTimeout(() => {
+    setMessages((prev) => [...prev, { from: "bot", text: botText }]);
+    setIsReplying(false);
+  }, 320);
+};
+
 
   const clearChat = () => setMessages([]);
 

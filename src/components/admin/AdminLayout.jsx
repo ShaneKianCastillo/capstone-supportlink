@@ -13,8 +13,10 @@ import {
   Lock,
   LogOut,
   ChevronDown,
+  BotMessageSquare
 } from "lucide-react";
 
+import ChatSettings from "./ChatSettings";
 import UserManagement from "./UserManagement";
 import SentReports from "./SentReports";
 import OnProcess from "./OnProcess";
@@ -82,22 +84,15 @@ const AdminLayout = ({ setRole }) => {
 
   const renderContent = () => {
     switch (currentView) {
-      case "users":
-        return <UserManagement />;
-      case "sent":
-        return <SentReports />;
-      case "onprocess":
-        return <OnProcess />;
-      case "resolved":
-        return <ResolvedReports />;
-      case "asset-request":
-        return <AssetRequest />;
-      case "asset-history":
-        return <RequestHistory />;
-      case "password":
-        return <ChangePassword />;
-      default:
-        return <UserManagement />;
+      case "users": return <UserManagement />;
+      case "sent": return <SentReports />;
+      case "onprocess": return <OnProcess />;
+      case "resolved": return <ResolvedReports />;
+      case "asset-request": return <AssetRequest />;
+      case "asset-history": return <RequestHistory />;
+      case "password": return <ChangePassword />;
+      case "chat-settings": return <ChatSettings />;   // 👈 add this
+      default: return <UserManagement />;
     }
   };
 
@@ -112,7 +107,7 @@ const AdminLayout = ({ setRole }) => {
           ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}
         `}
       >
-         {/* Replace logo with user info */}
+        {/* Replace logo with user info */}
         <div className="p-4 pl-8 border-b border-gray-700 flex justify-between items-center lg:justify-start">
           <div className="flex flex-col">
             <h1 className="font-bold text-lg">{profile.name || '—'}</h1>
@@ -133,9 +128,8 @@ const AdminLayout = ({ setRole }) => {
             <li>
               <button
                 onClick={() => navigateTo("users")}
-                className={`block p-2 rounded flex items-center gap-2 hover:bg-blue-500 w-full text-left ${
-                  currentView === "users" ? "bg-blue-500" : ""
-                }`}
+                className={`block p-2 rounded flex items-center gap-2 hover:bg-blue-500 w-full text-left ${currentView === "users" ? "bg-blue-500" : ""
+                  }`}
               >
                 <Users /> Users
               </button>
@@ -151,42 +145,50 @@ const AdminLayout = ({ setRole }) => {
                   <FileText /> Report List
                 </span>
                 <ChevronDown
-                  className={`transform transition-transform duration-300 ${
-                    openDropdown === "reports" ? "rotate-180" : ""
-                  }`}
+                  className={`transform transition-transform duration-300 ${openDropdown === "reports" ? "rotate-180" : ""
+                    }`}
                 />
               </button>
               <div
-                className={`transition-all duration-500 ease-in-out overflow-hidden bg-[#0A1936] text-white rounded ml-4 ${
-                  openDropdown === "reports" ? "max-h-96 py-2" : "max-h-0 py-0"
-                }`}
+                className={`transition-all duration-500 ease-in-out overflow-hidden bg-[#0A1936] text-white rounded ml-4 ${openDropdown === "reports" ? "max-h-96 py-2" : "max-h-0 py-0"
+                  }`}
               >
                 <button
                   onClick={() => navigateTo("sent")}
-                  className={`block rounded px-4 py-2 w-full text-left hover:bg-blue-500 ${
-                    currentView === "sent" ? "bg-blue-500" : ""
-                  }`}
+                  className={`block rounded px-4 py-2 w-full text-left hover:bg-blue-500 ${currentView === "sent" ? "bg-blue-500" : ""
+                    }`}
                 >
                   <Send size={16} className="inline mr-2" /> Sent Reports
                 </button>
                 <button
                   onClick={() => navigateTo("onprocess")}
-                  className={`block rounded px-4 py-2 w-full text-left hover:bg-blue-500 ${
-                    currentView === "onprocess" ? "bg-blue-500" : ""
-                  }`}
+                  className={`block rounded px-4 py-2 w-full text-left hover:bg-blue-500 ${currentView === "onprocess" ? "bg-blue-500" : ""
+                    }`}
                 >
                   <Clock size={16} className="inline mr-2" /> On Process
                 </button>
                 <button
                   onClick={() => navigateTo("resolved")}
-                  className={`block rounded px-4 py-2 w-full text-left hover:bg-blue-500 ${
-                    currentView === "resolved" ? "bg-blue-500" : ""
-                  }`}
+                  className={`block rounded px-4 py-2 w-full text-left hover:bg-blue-500 ${currentView === "resolved" ? "bg-blue-500" : ""
+                    }`}
                 >
                   <CheckCircle size={16} className="inline mr-2" /> Resolved
                 </button>
               </div>
             </li>
+
+            {/* CHAT SETTINGS */}
+            {(profile.role === "MIS Admin" || profile.role === "IT Support Specialist") && (
+              <li>
+                <button
+                  onClick={() => navigateTo("chat-settings")}
+                  className={`block p-2 rounded flex items-center gap-2 hover:bg-blue-500 w-full text-left ${currentView === "chat-settings" ? "bg-blue-500" : ""
+                    }`}
+                >
+                  <BotMessageSquare /> ChatBot Settings
+                </button>
+              </li>
+            )}
 
             {/* ASSET DROPDOWN */}
             <li>
@@ -198,29 +200,25 @@ const AdminLayout = ({ setRole }) => {
                   <Package /> Asset
                 </span>
                 <ChevronDown
-                  className={`transform transition-transform duration-300 ${
-                    openDropdown === "asset" ? "rotate-180" : ""
-                  }`}
+                  className={`transform transition-transform duration-300 ${openDropdown === "asset" ? "rotate-180" : ""
+                    }`}
                 />
               </button>
               <div
-                className={`transition-all duration-500 ease-in-out overflow-hidden bg-[#0A1936] text-white rounded ml-4 ${
-                  openDropdown === "asset" ? "max-h-96 py-2" : "max-h-0 py-0"
-                }`}
+                className={`transition-all duration-500 ease-in-out overflow-hidden bg-[#0A1936] text-white rounded ml-4 ${openDropdown === "asset" ? "max-h-96 py-2" : "max-h-0 py-0"
+                  }`}
               >
                 <button
                   onClick={() => navigateTo("asset-request")}
-                  className={`block rounded px-4 py-2 w-full text-left hover:bg-blue-500 ${
-                    currentView === "asset-request" ? "bg-blue-500" : ""
-                  }`}
+                  className={`block rounded px-4 py-2 w-full text-left hover:bg-blue-500 ${currentView === "asset-request" ? "bg-blue-500" : ""
+                    }`}
                 >
                   <Send size={16} className="inline mr-2" /> Request Asset
                 </button>
                 <button
                   onClick={() => navigateTo("asset-history")}
-                  className={`block rounded px-4 py-2 w-full text-left hover:bg-blue-500 ${
-                    currentView === "asset-history" ? "bg-blue-500" : ""
-                  }`}
+                  className={`block rounded px-4 py-2 w-full text-left hover:bg-blue-500 ${currentView === "asset-history" ? "bg-blue-500" : ""
+                    }`}
                 >
                   <History size={16} className="inline mr-2" /> Request History
                 </button>
@@ -231,13 +229,12 @@ const AdminLayout = ({ setRole }) => {
             <li>
               <button
                 onClick={() => {
-                   setCurrentView("password");     // update header label
-                   setIsSidebarOpen(false);        // close drawer on mobile
-                   setShowPwdModal(true);          // 👈 open the modal
+                  setCurrentView("password");     // update header label
+                  setIsSidebarOpen(false);        // close drawer on mobile
+                  setShowPwdModal(true);          // 👈 open the modal
                 }}
-                className={`block p-2 rounded flex items-center gap-2 hover:bg-blue-500 w-full text-left ${
-                  currentView === "password" ? "bg-blue-500" : ""
-                }`}
+                className={`block p-2 rounded flex items-center gap-2 hover:bg-blue-500 w-full text-left ${currentView === "password" ? "bg-blue-500" : ""
+                  }`}
               >
                 <Lock /> Change Password
               </button>
@@ -283,6 +280,7 @@ const AdminLayout = ({ setRole }) => {
             {currentView === "resolved" && "Resolved Reports"}
             {currentView === "asset-request" && "Asset Request"}
             {currentView === "asset-history" && "Request History"}
+            {currentView === "chat-settings" && "ChatBot Settings"}
             {currentView === "password" && "Change Password"}
           </h1>
 
