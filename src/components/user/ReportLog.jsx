@@ -330,7 +330,7 @@ const ReportLog = () => {
                   <div className="space-y-1">
                     <p className="text-md font-semibold">Building Name: {report.buildingName || '—'}</p>
                     <p className="text-md font-semibold">Floor Location: {report.floorLocation || '—'}</p>
-                    <p className="text-md font-semibold">Service Type: {report.serviceType || '—'}</p>
+                    <p className="text-md font-semibold">Service Tpe: {report.serviceType || '—'}</p>
                     <p className="text-md font-semibold">
                       Platform / System Name: {report.platformName || report.systemName || report.platform || '—'}
                     </p>
