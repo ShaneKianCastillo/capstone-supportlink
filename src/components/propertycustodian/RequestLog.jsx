@@ -1,9 +1,13 @@
 // src/components/custodian/RequestLog.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { Search, Download, Trash2 } from "lucide-react";
+import { Search, Download as DownloadIcon, Trash2 } from "lucide-react";
 import { db } from "../../config/firebase";
 import { collection, onSnapshot, query, doc, deleteDoc } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 import Swal from "sweetalert2";
+
+// ⬇️ Add this import
+import Download from "../admin/Download";
 
 const RequestLog = () => {
   const [reqs, setReqs] = useState([]);
@@ -11,13 +15,28 @@ const RequestLog = () => {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // subscribe to all assetRequests
+  // ⬇️ Modal state
+  const [showDownload, setShowDownload] = useState(false);
+
+  // role (passed to Download; not used for filtering requests inside Download, but harmless)
+  const [myRole, setMyRole] = useState(localStorage.getItem("role") || "");
+  useEffect(() => {
+    const sync = () => setMyRole(localStorage.getItem("role") || "");
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
+  }, []);
+
+  // uid (optional prop for Download)
+  const uid =
+    getAuth().currentUser?.uid ||
+    localStorage.getItem("uid") ||
+    "";
+
   useEffect(() => {
     const unsub = onSnapshot(
       query(collection(db, "assetRequests")),
       (snap) => {
         const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        // approved/declined first by time
         rows.sort((a, b) => {
           const ta =
             a.approvedAt?.toMillis?.() ??
@@ -29,7 +48,7 @@ const RequestLog = () => {
             b.declinedAt?.toMillis?.() ??
             b.serverTimeStamp?.toMillis?.() ??
             0;
-          return tb - ta;
+        return tb - ta;
         });
         setReqs(rows);
         setLoading(false);
@@ -56,7 +75,6 @@ const RequestLog = () => {
     } catch { return "—"; }
   };
 
-  // 1) Only Approved/Declined
   const approvedDeclined = useMemo(() => {
     return reqs.filter((r) => {
       const s = (r.status || "").toLowerCase();
@@ -64,14 +82,12 @@ const RequestLog = () => {
     });
   }, [reqs]);
 
-  // 2) Filter by status dropdown
   const byStatus = useMemo(() => {
     if (statusFilter === "All") return approvedDeclined;
     const wanted = statusFilter.toLowerCase();
     return approvedDeclined.filter((r) => (r.status || "").toLowerCase() === wanted);
   }, [statusFilter, approvedDeclined]);
 
-  // 3) Search by assetName/reason
   const filtered = useMemo(() => {
     if (!search.trim()) return byStatus;
     const q = search.toLowerCase();
@@ -130,7 +146,7 @@ const RequestLog = () => {
           className="flex-1 border-2 border-black rounded p-2 focus:outline-none focus:border-gray-500"
         />
         <button
-          onClick={() => setSearch((s) => s)} // noop
+          onClick={() => setSearch((s) => s)}
           className="p-2 border-2 border-black rounded hover:bg-gray-100 transition-colors"
           aria-label="Search"
         >
@@ -159,14 +175,13 @@ const RequestLog = () => {
 
         {/* Download button */}
         <button
+          onClick={() => setShowDownload(true)}
           className="flex justify-center items-center rounded border-2 border-black px-3 py-2 font-semibold gap-2 w-full lg:w-auto"
-          disabled
-          title="Coming soon"
+          title="Download printable PDF"
         >
-          Download <Download />
+          Download <DownloadIcon />
         </button>
       </div>
-
 
       {/* Loading overlay */}
       {loading && (
@@ -212,7 +227,6 @@ const RequestLog = () => {
                     <td className="border-black border-2 p-2 text-center">{formatDateTime(r.serverTimeStamp)}</td>
                     <td className="border-black border-2 p-2 text-center">
                       <div className="flex justify-center items-center gap-2">
-                        {/* View decline message when Declined */}
                         {(r.status || "").toLowerCase() === "declined" && (r.declineReason || "").trim() && (
                           <button
                             onClick={() =>
@@ -244,6 +258,15 @@ const RequestLog = () => {
           </table>
         </div>
       </div>
+
+      {/* ⬇️ Download modal */}
+      <Download
+        open={showDownload}
+        onClose={() => setShowDownload(false)}
+        context="requests"
+        role={myRole}
+        uid={uid}
+      />
     </div>
   );
 };

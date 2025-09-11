@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Search, Download, Trash2 } from "lucide-react";
+import { Search, Download as DownloadIcon, Trash2 } from "lucide-react";
 import { db } from "../../config/firebase";
 import {
   collection,
@@ -11,12 +11,19 @@ import {
   setDoc,
   serverTimestamp,
 } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 import Swal from "sweetalert2";
+
+// ⬇️ Add this import
+import Download from "./Download";
 
 const ResolvedReports = () => {
   const [reports, setReports] = useState([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+
+  // ⬇️ Modal state
+  const [showDownload, setShowDownload] = useState(false);
 
   // current role
   const [myRole, setMyRole] = useState(localStorage.getItem("role") || "");
@@ -26,45 +33,44 @@ const ResolvedReports = () => {
     return () => window.removeEventListener("storage", sync);
   }, []);
 
+  // current uid (for completeness; Download accepts it)
+  const uid =
+    getAuth().currentUser?.uid ||
+    localStorage.getItem("uid") ||
+    "";
+
   // roles → allowed service types & hide actions for assistant admins
   const allowedTypesForRole = (role) => {
     switch (role) {
       case "CSD Admin":
       case "CSD Asst. Admin":
         return ["Facilities and Maintenance"];
-
       case "MIS Admin":
       case "MIS Asst. Admin":
         return ["IT Support Services - Software"];
-
       case "IT Support Specialist":
         return ["IT Support Services - Hardware"];
-
       case "Admin":
         return [
           "Facilities and Maintenance",
           "IT Support Services - Hardware",
           "IT Support Services - Software",
         ];
-
       default:
         return [];
     }
   };
 
   const allowedTypes = allowedTypesForRole(myRole);
-
   const hideActions =
     myRole === "MIS Asst. Admin" || myRole === "CSD Asst. Admin";
-  const COLS = hideActions ? 4 : 5; // for empty-state colSpan & header count
+  const COLS = hideActions ? 4 : 5;
 
-  // live subscribe to resolvedReports
   useEffect(() => {
     const unsub = onSnapshot(
       query(collection(db, "resolvedReports")),
       (snap) => {
         const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        // newest resolved first
         rows.sort((a, b) => {
           const ra =
             a.resolvedAt?.toMillis?.() ?? a.serverTimeStamp?.toMillis?.() ?? 0;
@@ -90,8 +96,8 @@ const ResolvedReports = () => {
         ts && typeof ts.toDate === "function"
           ? ts.toDate()
           : ts instanceof Date
-            ? ts
-            : null;
+          ? ts
+          : null;
       if (!d) return "—";
       return d.toLocaleString(undefined, {
         year: "numeric",
@@ -105,18 +111,15 @@ const ResolvedReports = () => {
     }
   };
 
-  // 1) role-based filter by serviceType
   const roleFiltered = useMemo(() => {
     if (!allowedTypes.length) return [];
     return reports.filter((r) => allowedTypes.includes(r.serviceType || ""));
   }, [reports, allowedTypes]);
 
-  // 2) exclude items soft-hidden for Admin
   const roleAndAdminFiltered = useMemo(() => {
     return roleFiltered.filter((r) => !r.hiddenForAdmin);
   }, [roleFiltered]);
 
-  // 3) search filter by building / floor location / description
   const filtered = useMemo(() => {
     if (!search.trim()) return roleAndAdminFiltered;
     const q = search.toLowerCase();
@@ -129,13 +132,11 @@ const ResolvedReports = () => {
     });
   }, [search, roleAndAdminFiltered]);
 
-  // Soft-hide for Admin, hard-delete only if user has also hidden it in their Report Log
   const handleDelete = async (report) => {
     try {
       const result = await Swal.fire({
         title: "Remove this report?",
-        text:
-          "This action will remove the report from the Resolved Report List.",
+        text: "This action will remove the report from the Resolved Report List.",
         icon: "question",
         showCancelButton: true,
         confirmButtonColor: "#d33",
@@ -151,31 +152,22 @@ const ResolvedReports = () => {
         didOpen: () => Swal.showLoading(),
       });
 
-      // Check if user already removed it in their Report Log.
-      // We assume the report has 'uid' of the owner.
       const ownerUid = report.uid;
       const hideDocId = `${ownerUid}_${report.id}`;
       const hideDocRef = doc(db, "userResolvedHides", hideDocId);
       const hideSnap = await getDoc(hideDocRef);
 
       if (hideSnap.exists()) {
-        // Both parties removed → HARD DELETE from DB
         await deleteDoc(doc(db, "resolvedReports", report.id));
-
-        // (Optional) also remove the hide marker:
-        // await deleteDoc(hideDocRef);
-
         Swal.close();
         await Swal.fire({
           title: "Deleted",
-          text:
-            "The report is deleted successfully",
+          text: "The report is deleted successfully",
           icon: "success",
           timer: 1400,
           showConfirmButton: false,
         });
       } else {
-        // Admin removed first → just hide from Admin list
         await setDoc(
           doc(db, "resolvedReports", report.id),
           {
@@ -184,7 +176,6 @@ const ResolvedReports = () => {
           },
           { merge: true }
         );
-
         Swal.close();
         await Swal.fire({
           title: "Removed Report",
@@ -217,7 +208,7 @@ const ResolvedReports = () => {
             className="flex-1 border-2 border-black rounded p-2 focus:outline-none focus:border-gray-500"
           />
           <button
-            onClick={() => setSearch((s) => s)} // noop; kept for UX symmetry
+            onClick={() => setSearch((s) => s)}
             className="p-2 border-2 border-black rounded hover:bg-gray-100 transition-colors"
             aria-label="Search"
           >
@@ -228,11 +219,11 @@ const ResolvedReports = () => {
 
       <div className="flex justify-end mt-4">
         <button
+          onClick={() => setShowDownload(true)}
           className="flex justify-center items-center rounded border-2 border-black px-3 py-2 font-semibold gap-2 w-full lg:w-auto"
-          disabled
-          title="Coming soon"
+          title="Download printable PDF"
         >
-          Download <Download />
+          Download <DownloadIcon />
         </button>
       </div>
 
@@ -272,8 +263,8 @@ const ResolvedReports = () => {
                     {allowedTypes.length === 0
                       ? "No reports available for your role."
                       : search
-                        ? "No matching reports."
-                        : "No resolved reports yet."}
+                      ? "No matching reports."
+                      : "No resolved reports yet."}
                   </td>
                 </tr>
               ) : (
@@ -289,10 +280,8 @@ const ResolvedReports = () => {
                       {r.additionalDetails || "—"}
                     </td>
                     <td className="border-black border-2 p-2 text-center">
-                       {formatDateTime(r.resolvedAt || r.serverTimeStamp)}
+                      {formatDateTime(r.resolvedAt || r.serverTimeStamp)}
                     </td>
-
-                    {/* Actions (hidden for assistant admins) */}
                     {!hideActions && (
                       <td className="border-black border-2 p-2 text-center">
                         <div className="flex justify-center items-center">
@@ -314,6 +303,15 @@ const ResolvedReports = () => {
           </table>
         </div>
       </div>
+
+      {/* ⬇️ Download modal */}
+      <Download
+        open={showDownload}
+        onClose={() => setShowDownload(false)}
+        context="resolved"
+        role={myRole}
+        uid={uid}
+      />
     </div>
   );
 };
