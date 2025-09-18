@@ -16,20 +16,20 @@ import dctLogo from "../../assets/dctLogo.png";
  *  - uid:  current user's uid (string)
  */
 const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) => {
-  const [mode, setMode] = useState("daily"); // "daily" | "monthly"
-  const [day, setDay] = useState(() => new Date().toISOString().slice(0, 10)); // yyyy-mm-dd
+  const [mode, setMode] = useState("weekly"); // "weekly" | "monthly"
+  const [weekStart, setWeekStart] = useState(() => new Date().toISOString().slice(0, 10)); // yyyy-mm-dd
   const [month, setMonth] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; // yyyy-mm
   });
 
-  const [rows, setRows] = useState([]); // printable items after filtering
+  const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [imgPreview, setImgPreview] = useState(null);
 
   const containerRef = useRef(null);
 
-  // --- helpers
+  // ---- date helpers
   const toDate = (ts) => {
     try {
       if (ts && typeof ts.toDate === "function") return ts.toDate();
@@ -39,29 +39,28 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
       return null;
     }
   };
-
-  const sameDay = (date, ymd) => {
-    if (!date) return false;
-    const s = ymd.split("-");
-    const Y = +s[0],
-      M = +s[1],
-      D = +s[2];
-    return (
-      date.getFullYear() === Y &&
-      date.getMonth() + 1 === M &&
-      date.getDate() === D
-    );
+  const addDays = (date, n) => {
+    const d = new Date(date.getTime());
+    d.setDate(d.getDate() + n);
+    return d;
   };
-
-  const inMonth = (date, ym) => {
+  const parseYMD = (ymd) => {
+    const [y, m, d] = ymd.split("-").map((v) => +v);
+    return new Date(y, m - 1, d);
+  };
+  const sameMonth = (date, ym) => {
     if (!date) return false;
-    const s = ym.split("-");
-    const Y = +s[0],
-      M = +s[1];
+    const [Y, M] = ym.split("-").map((v) => +v);
     return date.getFullYear() === Y && date.getMonth() + 1 === M;
   };
+  const inWeekWindow = (date, startYmd) => {
+    if (!date) return false;
+    const s = parseYMD(startYmd);
+    const e = addDays(s, 6);
+    return date >= s && date <= e;
+  };
 
-  // role → which service types they typically handle (for resolved context)
+  // role → service types
   const allowedTypesForRole = (r) => {
     switch (r) {
       case "CSD Admin":
@@ -104,10 +103,17 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
             data = data.filter((r) => allow.includes(r.serviceType || ""));
           }
 
-          data = data.filter((r) => {
-            const dt = toDate(r.resolvedAt || r.serverTimeStamp);
-            return mode === "daily" ? sameDay(dt, day) : inMonth(dt, month);
-          });
+          if (mode === "weekly") {
+            data = data.filter((r) => {
+              const dt = toDate(r.resolvedAt || r.serverTimeStamp);
+              return inWeekWindow(dt, weekStart);
+            });
+          } else {
+            data = data.filter((r) => {
+              const dt = toDate(r.resolvedAt) || toDate(r.serverTimeStamp);
+              return sameMonth(dt, month);
+            });
+          }
 
           data.sort((a, b) => {
             const ta =
@@ -118,7 +124,7 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
               b.resolvedAt?.toMillis?.() ??
               b.serverTimeStamp?.toMillis?.() ??
               0;
-            return tb - ta;
+            return ta - tb; // oldest → newest for readable records
           });
         } else {
           const snap = await getDocs(query(collection(db, "assetRequests")));
@@ -127,13 +133,25 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
             const s = (r.status || "").toLowerCase();
             return s === "approved" || s === "declined";
           });
-          data = data.filter((r) => {
-            const dt =
-              toDate(r.approvedAt) ||
-              toDate(r.declinedAt) ||
-              toDate(r.serverTimeStamp);
-            return mode === "daily" ? sameDay(dt, day) : inMonth(dt, month);
-          });
+
+          if (mode === "weekly") {
+            data = data.filter((r) => {
+              const dt =
+                toDate(r.approvedAt) ||
+                toDate(r.declinedAt) ||
+                toDate(r.serverTimeStamp);
+              return inWeekWindow(dt, weekStart);
+            });
+          } else {
+            data = data.filter((r) => {
+              const dt =
+                toDate(r.approvedAt) ||
+                toDate(r.declinedAt) ||
+                toDate(r.serverTimeStamp);
+              return sameMonth(dt, month);
+            });
+          }
+
           data.sort((a, b) => {
             const ta =
               a.approvedAt?.toMillis?.() ??
@@ -145,7 +163,7 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
               b.declinedAt?.toMillis?.() ??
               b.serverTimeStamp?.toMillis?.() ??
               0;
-            return tb - ta;
+            return ta - tb;
           });
         }
 
@@ -160,21 +178,18 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
     return () => {
       isMounted = false;
     };
-  }, [open, context, role, mode, day, month]);
+  }, [open, context, role, mode, weekStart, month]);
 
   const printableTitle = useMemo(() => {
-    if (context === "resolved") {
-      const group =
-        role.includes("CSD")
+    const group =
+      context === "resolved"
+        ? role.includes("CSD")
           ? "CSD Office – Resolved Reports"
           : role.includes("MIS") || role.includes("IT Support")
           ? "MIS Office – Resolved Reports"
-          : "Resolved Reports";
-      return mode === "daily" ? `${group} (Daily)` : `${group} (Monthly)`;
-    } else {
-      const group = "Property Custodian – Request Log";
-      return mode === "daily" ? `${group} (Daily)` : `${group} (Monthly)`;
-    }
+          : "Resolved Reports"
+        : "Property Custodian – Request Log";
+    return mode === "weekly" ? `${group} (Weekly)` : `${group} (Monthly)`;
   }, [context, role, mode]);
 
   const formatDateTime = (ts) => {
@@ -192,13 +207,11 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
       return "—";
     }
   };
-
-  const formatYMD = (date) =>
-    date
-      ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
-          2,
-          "0"
-        )}-${String(date.getDate()).padStart(2, "0")}`
+  const formatDate = (d) =>
+    d
+      ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+          d.getDate()
+        ).padStart(2, "0")}`
       : "—";
 
   // ---- PDF export (A4 portrait)
@@ -216,12 +229,11 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
       const el = pages[i];
       el.style.transform = "scale(1)";
 
-      // Force white background and higher scale for sharp text
       const canvas = await html2canvas(el, {
         scale: 2,
         useCORS: true,
         backgroundColor: "#ffffff",
-        windowWidth: 1000, // more consistent rendering
+        windowWidth: 1000,
       });
       const img = canvas.toDataURL("image/png");
       const imgW = pageW;
@@ -231,7 +243,12 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
       pdf.addImage(img, "PNG", 0, 0, imgW, Math.min(imgH, pageH));
     }
 
-    const fileLabel = mode === "daily" ? day || "daily" : month || "monthly";
+    const fileLabel =
+      mode === "weekly"
+        ? `${formatDate(parseYMD(weekStart))}_to_${formatDate(
+            addDays(parseYMD(weekStart), 6)
+          )}`
+        : month || "monthly";
     const base = context === "resolved" ? "ResolvedReports" : "RequestLog";
     pdf.save(`${base}_${fileLabel}.pdf`);
   };
@@ -240,19 +257,19 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center mt-20 z-50"
+      className="fixed inset-0 z-[2000] flex items-center justify-center p-2 sm:p-4"
       aria-modal="true"
       role="dialog"
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/50 opacity-100"
+        className="absolute inset-0 bg-black/50"
         onClick={onClose}
       />
 
-      {/* Panel – make it a flex column, so body can flex and scroll */}
-      <div className="relative w-[96%] max-w-5xl max-h-[90vh] bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col">
-        {/* Header (sticky) */}
+      {/* Panel */}
+      <div className="relative w-[96%] max-w-5xl max-h-[85vh] sm:max-h-[90vh] md:max-h-[88vh] lg:max-h-[80vh] bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col overscroll-contain mt-10">
+        {/* Header */}
         <div className="sticky top-0 z-10 bg-white border-b px-4 sm:px-6 py-3 flex items-center justify-between">
           <div>
             <div className="text-sm text-gray-500">
@@ -261,16 +278,14 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
             <div className="text-lg font-semibold">{printableTitle}</div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="relative">
-              <SettingsMenu
-                mode={mode}
-                setMode={setMode}
-                day={day}
-                setDay={setDay}
-                month={month}
-                setMonth={setMonth}
-              />
-            </div>
+            <SettingsMenu
+              mode={mode}
+              setMode={setMode}
+              weekStart={weekStart}
+              setWeekStart={setWeekStart}
+              month={month}
+              setMonth={setMonth}
+            />
 
             <button
               onClick={downloadPdf}
@@ -297,7 +312,7 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
           </div>
         </div>
 
-        {/* Body – flex-1 + overflow to ensure scrolling when many pages */}
+        {/* Body */}
         <div className="flex-1 p-4 sm:p-6 overflow-y-auto" ref={containerRef}>
           {loading && (
             <div className="py-16 text-center text-gray-600">
@@ -311,26 +326,29 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
             </div>
           )}
 
-          {/* Pages */}
           {!loading && rows.length > 0 && (
             <div className="space-y-6">
-              {rows.map((r) =>
-                context === "resolved" ? (
-                  <ResolvedPage
-                    key={r.id}
-                    r={r}
-                    role={role}
-                    formatDateTime={formatDateTime}
-                    imgClick={(url) => url && setImgPreview(url)}
-                  />
-                ) : (
-                  <RequestPage
-                    key={r.id}
-                    r={r}
-                    formatDateTime={formatDateTime}
-                    imgClick={(url) => url && setImgPreview(url)}
-                  />
+              {mode === "weekly" ? (
+                rows.map((r) =>
+                  context === "resolved" ? (
+                    <ResolvedPage
+                      key={r.id}
+                      r={r}
+                      role={role}
+                      formatDateTime={formatDateTime}
+                      imgClick={(url) => url && setImgPreview(url)}
+                    />
+                  ) : (
+                    <RequestPage
+                      key={r.id}
+                      r={r}
+                      formatDateTime={formatDateTime}
+                      imgClick={(url) => url && setImgPreview(url)}
+                    />
+                  )
                 )
+              ) : (
+                <MonthlySummary context={context} rows={rows} />
               )}
             </div>
           )}
@@ -340,7 +358,7 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
       {/* Fullscreen image preview */}
       {imgPreview && (
         <div
-          className="fixed inset-0 z-[90] bg-black/80 flex items-center justify-center"
+          className="fixed inset-0 z-[2100] bg-black/80 flex items-center justify-center"
           onClick={() => setImgPreview(null)}
         >
           <img
@@ -354,8 +372,8 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
   );
 };
 
-/* ---------- Tiny settings popover (no external lib) ---------- */
-const SettingsMenu = ({ mode, setMode, day, setDay, month, setMonth }) => {
+/* ---------- Settings: desktop popover + mobile centered modal ---------- */
+const SettingsMenu = ({ mode, setMode, weekStart, setWeekStart, month, setMonth }) => {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -374,55 +392,122 @@ const SettingsMenu = ({ mode, setMode, day, setDay, month, setMonth }) => {
         <Settings2 /> Settings
       </button>
 
+      {/* Desktop popover (right-aligned) */}
       {open && (
-        <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-lg border p-3 z-20">
-          <div className="text-sm font-semibold mb-2">Report Type</div>
-          <div className="flex gap-2 mb-3">
-            <button
-              onClick={() => setMode("daily")}
-              className={`px-3 py-1.5 rounded-full text-sm border ${
-                mode === "daily" ? "bg-gray-900 text-white border-gray-900" : ""
-              }`}
-            >
-              Daily
-            </button>
-            <button
-              onClick={() => setMode("monthly")}
-              className={`px-3 py-1.5 rounded-full text-sm border ${
-                mode === "monthly"
-                  ? "bg-gray-900 text-white border-gray-900"
-                  : ""
-              }`}
-            >
-              Monthly
-            </button>
+        <div className="hidden sm:block absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-lg border p-3 z-[2050]">
+          <SettingsPanel
+            mode={mode}
+            setMode={setMode}
+            weekStart={weekStart}
+            setWeekStart={setWeekStart}
+            month={month}
+            setMonth={setMonth}
+            close={() => setOpen(false)}
+          />
+        </div>
+      )}
+
+      {/* Mobile centered modal */}
+      {open && (
+        <div className="sm:hidden fixed inset-0 z-[2100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
+          <div className="relative w-full max-w-sm bg-white rounded-xl shadow-lg border p-3 z-[2110]">
+            <SettingsPanel
+              mode={mode}
+              setMode={setMode}
+              weekStart={weekStart}
+              setWeekStart={setWeekStart}
+              month={month}
+              setMonth={setMonth}
+              close={() => setOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const SettingsPanel = ({
+  mode,
+  setMode,
+  weekStart,
+  setWeekStart,
+  month,
+  setMonth,
+  close,
+}) => {
+  const weekStartDate = useMemo(() => new Date(weekStart), [weekStart]);
+  const weekEndDate = useMemo(() => {
+    if (!weekStartDate || isNaN(+weekStartDate)) return null;
+    const d = new Date(weekStartDate);
+    d.setDate(d.getDate() + 6);
+    return d;
+  }, [weekStartDate]);
+
+  return (
+    <div>
+      <div className="text-sm font-semibold mb-2">Report Type</div>
+      <div className="flex gap-2 mb-3">
+        <button
+          onClick={() => setMode("weekly")}
+          className={`px-3 py-1.5 rounded-full text-sm border ${
+            mode === "weekly" ? "bg-gray-900 text-white border-gray-900" : ""
+          }`}
+        >
+          Weekly
+        </button>
+        <button
+          onClick={() => setMode("monthly")}
+          className={`px-3 py-1.5 rounded-full text-sm border ${
+            mode === "monthly" ? "bg-gray-900 text-white border-gray-900" : ""
+          }`}
+        >
+          Monthly
+        </button>
+      </div>
+
+      {mode === "weekly" ? (
+        <div className="space-y-2">
+          <label className="block text-xs text-gray-600">Start of week</label>
+          <input
+            type="date"
+            value={weekStart}
+            onChange={(e) => setWeekStart(e.target.value)}
+            className="w-full border rounded px-2 py-1 text-sm"
+          />
+          <div className="text-[11px] text-gray-600">
+            Range:&nbsp;
+            {isNaN(+weekStartDate) ? "—" : weekStartDate.toLocaleDateString()} —{" "}
+            {weekEndDate ? weekEndDate.toLocaleDateString() : "—"}
           </div>
 
-          {mode === "daily" ? (
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">
-                Pick a date
-              </label>
-              <input
-                type="date"
-                value={day}
-                onChange={(e) => setDay(e.target.value)}
-                className="w-full border rounded px-2 py-1 text-sm"
-              />
-            </div>
-          ) : (
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">
-                Pick a month
-              </label>
-              <input
-                type="month"
-                value={month}
-                onChange={(e) => setMonth(e.target.value)}
-                className="w-full border rounded px-2 py-1 text-sm"
-              />
-            </div>
-          )}
+          <div className="mt-2 flex justify-end">
+            <button
+              className="px-3 py-1.5 rounded border text-sm hover:bg-gray-50"
+              onClick={close}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <label className="block text-xs text-gray-600">Pick a month</label>
+          <input
+            type="month"
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            className="w-full border rounded px-2 py-1 text-sm"
+          />
+          <div className="mt-2 flex justify-end">
+            <button
+              className="px-3 py-1.5 rounded border text-sm hover:bg-gray-50"
+              onClick={close}
+            >
+              Done
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -434,21 +519,17 @@ const PdfHeader = () => {
   return (
     <div className="mb-3">
       <div className="relative flex items-center">
-        {/* Logo stays fixed at the left */}
+        {/* Logo kept at the far left, text remains centered across full width */}
         <img
           src={dctLogo}
           alt="DCT Logo"
           className="h-20 w-20 object-contain absolute left-0 top-1/2 -translate-y-1/2"
         />
-
-        {/* Text block is absolutely centered across full width */}
         <div className="w-full text-center leading-tight">
           <div className="text-[15px] tracking-wide font-bold uppercase">
             Dominican College of Tarlac, Inc.
           </div>
-          <div className="text-[11px] uppercase">
-            College of Computer Studies
-          </div>
+          <div className="text-[11px] uppercase">College of Computer Studies</div>
           <div className="text-[10px] text-gray-700">
             McArthur Highway, Poblacion (Sto. Rosario), Capas, 2315 Tarlac, Philippines
           </div>
@@ -460,18 +541,15 @@ const PdfHeader = () => {
           </div>
         </div>
       </div>
-
-      <div className="mt-2 border-t-2 border-black" />
+      <div className="mt-2 border-b-2 border-black" />
     </div>
   );
 };
 
-
-
 const PdfFooter = () => {
   return (
     <div className="mt-4">
-      <div className="border-t border-black border-2 mb-1" />
+      <div className="border-b-2 border-black mb-1" />
       <div className="text-center">
         <div className="text-[11px] font-semibold tracking-wide">
           FIDES. PATRIA. SAPIENTIA.
@@ -490,11 +568,11 @@ const PdfFooter = () => {
   );
 };
 
-/* ---------------------- Print page: Resolved Reports ---------------------- */
-/** A4-friendly page:
- * - fixed content width ~ 794px (≈ 210mm at 96dpi) for consistent html2canvas
- * - generous spacing; each report intended to fill one page
- */
+/* ---------------------- A4 Page baseline (same for Weekly & Monthly) --- */
+const A4_PAGE =
+  "print-page bg-white rounded-xl border shadow p-6 w-[794px] min-h-[1123px] mx-auto flex flex-col";
+
+/* ---------------------- Weekly (per-report pages) ---------------------- */
 const ResolvedPage = ({ r, role, formatDateTime, imgClick }) => {
   const heading =
     (r.serviceType || "").includes("Facilities")
@@ -504,14 +582,11 @@ const ResolvedPage = ({ r, role, formatDateTime, imgClick }) => {
       : "MIS Office – IT Software Resolution";
 
   return (
-    <div className="print-page bg-white rounded-xl border shadow p-6 w-[794px] mx-auto">
-      {/* Header */}
+    <div className={A4_PAGE}>
       <PdfHeader />
 
-      {/* Title */}
       <div className="text-lg font-semibold mb-2">{heading}</div>
 
-      {/* Reporter line */}
       <div className="text-sm text-gray-700">
         <span className="font-semibold">{r.userName || "—"}</span>
         <span className="text-gray-400"> • </span>
@@ -522,7 +597,6 @@ const ResolvedPage = ({ r, role, formatDateTime, imgClick }) => {
 
       <hr className="my-4 border-gray-200" />
 
-      {/* Body – details + original image (square) */}
       <div className="grid grid-cols-1 md:grid-cols-[1fr,260px] gap-4">
         <div className="space-y-2 text-sm">
           {(r.serviceType || "").includes("Software") ? (
@@ -549,7 +623,6 @@ const ResolvedPage = ({ r, role, formatDateTime, imgClick }) => {
           </div>
         </div>
 
-        {/* Original image – square card */}
         <div className="bg-[#0A1936] p-2 rounded flex items-center justify-center">
           {r.imageUrl ? (
             <img
@@ -568,7 +641,6 @@ const ResolvedPage = ({ r, role, formatDateTime, imgClick }) => {
 
       <hr className="my-4 border-gray-200" />
 
-      {/* Resolution */}
       <div className="text-xs sm:text-sm text-gray-700 flex flex-wrap items-center gap-x-2">
         <span className="font-semibold">{r.resolvedByName || "—"}</span>
         <span className="text-gray-400">•</span>
@@ -582,7 +654,6 @@ const ResolvedPage = ({ r, role, formatDateTime, imgClick }) => {
         {r.resolutionNotes || "—"}
       </div>
 
-      {/* Resolution image – larger square for print, non-stretched */}
       <div className="mt-3 bg-[#0A1936] p-2 rounded flex items-center justify-center">
         {r.resolvedImageUrl ? (
           <img
@@ -598,24 +669,23 @@ const ResolvedPage = ({ r, role, formatDateTime, imgClick }) => {
         )}
       </div>
 
-      {/* Footer */}
+      {/* push footer to bottom */}
+      <div className="mt-auto" />
       <PdfFooter />
     </div>
   );
 };
 
-/* ---------------------- Print page: Request Log (Property Custodian) ---------------------- */
 const RequestPage = ({ r, formatDateTime, imgClick }) => {
   const status = (r.status || "").toLowerCase();
   return (
-    <div className="print-page bg-white rounded-xl border shadow p-6 w-[794px] mx-auto">
+    <div className={A4_PAGE}>
       <PdfHeader />
 
       <div className="text-lg font-semibold mb-2">
         Property Custodian – Asset Request
       </div>
 
-      {/* Requester line */}
       <div className="text-sm text-gray-700">
         <span className="font-semibold">{r.requesterName || r.userName || "—"}</span>
         <span className="text-gray-400"> • </span>
@@ -626,7 +696,6 @@ const RequestPage = ({ r, formatDateTime, imgClick }) => {
 
       <hr className="my-4 border-gray-200" />
 
-      {/* Body */}
       <div className="grid grid-cols-1 md:grid-cols-[1fr,260px] gap-4">
         <div className="space-y-2 text-sm">
           <div>
@@ -651,7 +720,6 @@ const RequestPage = ({ r, formatDateTime, imgClick }) => {
           </div>
         </div>
 
-        {/* Request image – square */}
         <div className="bg-[#0A1936] p-2 rounded flex items-center justify-center">
           {r.imageUrl ? (
             <img
@@ -668,6 +736,120 @@ const RequestPage = ({ r, formatDateTime, imgClick }) => {
         </div>
       </div>
 
+      {/* push footer to bottom */}
+      <div className="mt-auto" />
+      <PdfFooter />
+    </div>
+  );
+};
+
+/* ---------------------- Monthly summary (text-only) ---------------------- */
+const MonthlySummary = ({ context, rows }) => {
+  const groups = useMemo(() => {
+    const buckets = { 1: [], 2: [], 3: [], 4: [], 5: [] };
+    rows.forEach((r) => {
+      const d =
+        context === "resolved"
+          ? r.resolvedAt?.toDate?.() || r.serverTimeStamp?.toDate?.() || null
+          : r.approvedAt?.toDate?.() ||
+            r.declinedAt?.toDate?.() ||
+            r.serverTimeStamp?.toDate?.() ||
+            null;
+      if (!d) return;
+      const day = d.getDate();
+      const idx = day <= 7 ? 1 : day <= 14 ? 2 : day <= 21 ? 3 : day <= 28 ? 4 : 5;
+      buckets[idx].push(r);
+    });
+    return buckets;
+  }, [rows, context]);
+
+  const total = rows.length;
+
+  return (
+    <div className={A4_PAGE}>
+      <PdfHeader />
+      <div className="text-xl font-semibold mb-2">
+        {context === "resolved" ? "Monthly Record – Resolved Reports" : "Monthly Record – Asset Requests (Approved/Declined)"}
+      </div>
+      <div className="text-sm text-gray-700 mb-4">
+        Total items this month: <span className="font-semibold">{total}</span>
+      </div>
+
+      {/* Per-week counts */}
+      <div className="grid grid-cols-2 gap-2 text-sm mb-4">
+        <div className="border rounded p-2">Week 1 (1–7): <span className="font-semibold">{groups[1].length}</span></div>
+        <div className="border rounded p-2">Week 2 (8–14): <span className="font-semibold">{groups[2].length}</span></div>
+        <div className="border rounded p-2">Week 3 (15–21): <span className="font-semibold">{groups[3].length}</span></div>
+        <div className="border rounded p-2">Week 4 (22–28): <span className="font-semibold">{groups[4].length}</span></div>
+        <div className="border rounded p-2 col-span-2">Week 5 (29–EOM): <span className="font-semibold">{groups[5].length}</span></div>
+      </div>
+
+      {/* Records table */}
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm border">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="border px-2 py-1 text-left">#</th>
+              <th className="border px-2 py-1 text-left">{context === "resolved" ? "Service Type" : "Status"}</th>
+              <th className="border px-2 py-1 text-left">{context === "resolved" ? "Report Date → Resolved" : "Requested → Decision"}</th>
+              <th className="border px-2 py-1 text-left">{context === "resolved" ? "Reporter → Resolver" : "Requester"}</th>
+              {context === "resolved" ? (
+                <th className="border px-2 py-1 text-left">Details</th>
+              ) : (
+                <th className="border px-2 py-1 text-left">Asset / Reason</th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, idx) => {
+              const reportDt = r.serverTimeStamp?.toDate?.() || null;
+              const resolvedDt = r.resolvedAt?.toDate?.() || null;
+
+              const reqDt = r.serverTimeStamp?.toDate?.() || null;
+              const decisionDt = r.approvedAt?.toDate?.() || r.declinedAt?.toDate?.() || null;
+
+              return (
+                <tr key={r.id}>
+                  <td className="border px-2 py-1 align-top">{idx + 1}</td>
+                  <td className="border px-2 py-1 align-top">
+                    {context === "resolved" ? (r.serviceType || "—") : (r.status || "—")}
+                  </td>
+                  <td className="border px-2 py-1 align-top">
+                    {context === "resolved" ? (
+                      <>
+                        {reportDt ? reportDt.toLocaleDateString() : "—"} →{" "}
+                        {resolvedDt ? resolvedDt.toLocaleDateString() : "—"}
+                      </>
+                    ) : (
+                      <>
+                        {reqDt ? reqDt.toLocaleDateString() : "—"} →{" "}
+                        {decisionDt ? decisionDt.toLocaleDateString() : "—"}
+                      </>
+                    )}
+                  </td>
+                  <td className="border px-2 py-1 align-top">
+                    {context === "resolved" ? (
+                      <>
+                        {(r.userName || "—")} → <span className="font-medium">{r.resolvedByName || "—"}</span>
+                      </>
+                    ) : (
+                      r.requesterName || r.userName || "—"
+                    )}
+                  </td>
+                  <td className="border px-2 py-1 align-top">
+                    {context === "resolved"
+                      ? (r.additionalDetails || r.platformName || r.systemName || "—")
+                      : (<>{(r.assetName || "—")}{r.reason ? <> — <span className="italic">{r.reason}</span></> : null}</>)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* push footer to bottom */}
+      <div className="mt-auto" />
       <PdfFooter />
     </div>
   );
