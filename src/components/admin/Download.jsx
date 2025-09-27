@@ -98,6 +98,12 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
             .map((d) => ({ id: d.id, ...d.data() }))
             .filter((r) => !r.hiddenForAdmin);
 
+          // 🔒 ONLY include records that the user (reporter) has approved
+          // userApprovalStatus: 'approved' | 'pending' | 'declined'
+          data = data.filter(
+            (r) => (r.userApprovalStatus || "").toLowerCase() === "approved"
+          );
+
           const allow = allowedTypesForRole(role);
           if (allow.length) {
             data = data.filter((r) => allow.includes(r.serviceType || ""));
@@ -269,46 +275,52 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
 
       {/* Panel */}
       <div className="relative w-[96%] max-w-5xl max-h-[85vh] sm:max-h-[90vh] md:max-h-[88vh] lg:max-h-[80vh] bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col overscroll-contain mt-10">
-        {/* Header */}
-        <div className="sticky top-0 z-10 bg-white border-b px-4 sm:px-6 py-3 flex items-center justify-between">
-          <div>
-            <div className="text-sm text-gray-500">
-              {context === "resolved" ? "Resolved Reports" : "Request Log"}
+        {/* Header (mobile-friendly) */}
+        <div className="sticky top-0 z-10 bg-white border-b px-4 sm:px-6 py-3 relative">
+          {/* Close button stays visible */}
+          <button
+            onClick={onClose}
+            className="absolute right-3 top-1/2 -translate-y-1/2 h-9 w-9 inline-flex items-center justify-center rounded-full hover:bg-gray-100"
+            aria-label="Close"
+          >
+            <X />
+          </button>
+
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pr-12 sm:pr-0">
+            {/* Title */}
+            <div>
+              <div className="text-sm text-gray-500">
+                {context === "resolved" ? "Resolved Reports" : "Request Log"}
+              </div>
+              <div className="text-lg font-semibold">{printableTitle}</div>
             </div>
-            <div className="text-lg font-semibold">{printableTitle}</div>
-          </div>
-          <div className="flex items-center gap-2">
-            <SettingsMenu
-              mode={mode}
-              setMode={setMode}
-              weekStart={weekStart}
-              setWeekStart={setWeekStart}
-              month={month}
-              setMonth={setMonth}
-            />
 
-            <button
-              onClick={downloadPdf}
-              disabled={!rows.length || loading}
-              className={`flex items-center gap-2 px-3 py-2 rounded border font-semibold transition-colors ${
-                rows.length && !loading
-                  ? "hover:bg-gray-50"
-                  : "opacity-60 cursor-not-allowed"
-              }`}
-              title={
-                rows.length ? "Download PDF" : "No printable data for selected period"
-              }
-            >
-              <FileDown /> Download PDF
-            </button>
+            {/* Actions: column on mobile, row on sm+ */}
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              <SettingsMenu
+                mode={mode}
+                setMode={setMode}
+                weekStart={weekStart}
+                setWeekStart={setWeekStart}
+                month={month}
+                setMonth={setMonth}
+              />
 
-            <button
-              onClick={onClose}
-              className="h-9 w-9 inline-flex items-center justify-center rounded-full hover:bg-gray-100"
-              aria-label="Close"
-            >
-              <X />
-            </button>
+              <button
+                onClick={downloadPdf}
+                disabled={!rows.length || loading}
+                className={`flex items-center justify-center gap-2 px-3 py-2 rounded border font-semibold transition-colors w-full sm:w-auto lg:mr-10 md:mr-10 ${
+                  rows.length && !loading
+                    ? "hover:bg-gray-50"
+                    : "opacity-60 cursor-not-allowed"
+                }`}
+                title={
+                  rows.length ? "Download PDF" : "No printable data for selected period"
+                }
+              >
+                <FileDown /> Download PDF
+              </button>
+            </div>
           </div>
         </div>
 
@@ -386,7 +398,7 @@ const SettingsMenu = ({ mode, setMode, weekStart, setWeekStart, month, setMonth 
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 px-3 py-2 rounded-full border font-semibold hover:bg-gray-50"
+        className="flex items-center gap-2 px-3 py-2 rounded-full border font-semibold hover:bg-gray-50 w-full sm:w-auto justify-center"
         title="Settings"
       >
         <Settings2 /> Settings
@@ -766,7 +778,7 @@ const MonthlySummary = ({ context, rows }) => {
   const total = rows.length;
 
   return (
-    <div className={A4_PAGE}>
+    <div className="print-page bg-white rounded-xl border shadow p-6 w-[794px] min-h-[1123px] mx-auto flex flex-col">
       <PdfHeader />
       <div className="text-xl font-semibold mb-2">
         {context === "resolved" ? "Monthly Record – Resolved Reports" : "Monthly Record – Asset Requests (Approved/Declined)"}

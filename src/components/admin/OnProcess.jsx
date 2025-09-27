@@ -30,13 +30,13 @@ const OnProcess = () => {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState(null);
 
-  // second modal: resolution details
+  // resolution modal
   const [resolveOpen, setResolveOpen] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [resolutionImage, setResolutionImage] = useState(null);
   const [resolutionNotes, setResolutionNotes] = useState("");
 
-  // image hold-to-zoom in view modal
+  // image hold-to-zoom
   const [showImageFull, setShowImageFull] = useState(false);
   const imgTimerRef = useRef(null);
   const holdToOpen = () => {
@@ -46,7 +46,7 @@ const OnProcess = () => {
     clearTimeout(imgTimerRef.current);
   };
 
-  // role → allowed service types (split like SentReports)
+  // role → allowed service types
   const allowedTypesForRole = (role) => {
     switch (role) {
       case "CSD Admin":
@@ -95,6 +95,7 @@ const OnProcess = () => {
       (snap) => {
         const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         rows.sort((a, b) => {
+          // primary: processedAt desc, fallback: serverTimeStamp desc
           const pa = a.processedAt?.toMillis?.() ?? 0;
           const pb = b.processedAt?.toMillis?.() ?? 0;
           if (pb !== pa) return pb - pa;
@@ -116,14 +117,16 @@ const OnProcess = () => {
 
   const loading = loadingReports || loadingUsers;
 
+  const toDate = (ts) =>
+    ts && typeof ts.toDate === "function"
+      ? ts.toDate()
+      : ts instanceof Date
+      ? ts
+      : null;
+
   const formatDateTime = (ts) => {
     try {
-      const d =
-        ts && typeof ts.toDate === "function"
-          ? ts.toDate()
-          : ts instanceof Date
-          ? ts
-          : null;
+      const d = toDate(ts);
       if (!d) return "—";
       return d.toLocaleString(undefined, {
         year: "numeric",
@@ -149,11 +152,103 @@ const OnProcess = () => {
     });
   }, [reports, usersById]);
 
-  // 🔐 role-based filtering by serviceType
-  const filtered = useMemo(() => {
+  // role-scoped
+  const scoped = useMemo(() => {
     if (!allowedTypes.length) return [];
     return combined.filter((r) => allowedTypes.includes(r.serviceType || ""));
   }, [combined, allowedTypes]);
+
+  // -------- Filters (same pattern as SentReports) --------
+  const [q, setQ] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [sort, setSort] = useState("newest");
+
+  const resetFilters = () => {
+    setQ("");
+    setFrom("");
+    setTo("");
+    setSort("newest");
+  };
+
+  const filtered = useMemo(() => {
+    let rows = [...scoped];
+
+    if (from) {
+      const fromDate = new Date(from);
+      rows = rows.filter((r) => {
+        const d = toDate(r.processedAt) || toDate(r.serverTimeStamp);
+        return d ? d >= fromDate : false;
+      });
+    }
+    if (to) {
+      const toEdge = new Date(to);
+      toEdge.setDate(toEdge.getDate() + 1); // include whole day
+      rows = rows.filter((r) => {
+        const d = toDate(r.processedAt) || toDate(r.serverTimeStamp);
+        return d ? d < toEdge : false;
+      });
+    }
+
+    if (q.trim()) {
+      const needle = q.toLowerCase();
+      rows = rows.filter((r) => {
+        const fields = [
+          r.userName,
+          r.userDept,
+          r.additionalDetails,
+          r.platformName,
+          r.systemName,
+          r.platform,
+          r.buildingName,
+          r.floorLocation,
+          r.serviceType,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return fields.includes(needle);
+      });
+    }
+
+    rows.sort((a, b) => {
+      if (sort === "oldest") {
+        const ta =
+          a.processedAt?.toMillis?.() ??
+          a.serverTimeStamp?.toMillis?.() ??
+          0;
+        const tb =
+          b.processedAt?.toMillis?.() ??
+          b.serverTimeStamp?.toMillis?.() ??
+          0;
+        return ta - tb;
+      }
+      if (sort === "nameAsc" || sort === "nameDesc") {
+        const na = (a.userName || "").toLowerCase();
+        const nb = (b.userName || "").toLowerCase();
+        const cmp = na.localeCompare(nb);
+        return sort === "nameAsc" ? cmp : -cmp;
+      }
+      const ta =
+        a.processedAt?.toMillis?.() ??
+        a.serverTimeStamp?.toMillis?.() ??
+        0;
+      const tb =
+        b.processedAt?.toMillis?.() ??
+        b.serverTimeStamp?.toMillis?.() ??
+        0;
+      return tb - ta;
+    });
+
+    return rows;
+  }, [scoped, q, from, to, sort]);
+
+  const totalCount = scoped.length;
+  const filteredCount = filtered.length;
+
+  const hasFilters = useMemo(() => {
+    return Boolean(q.trim() || from || to);
+  }, [q, from, to]);
 
   const openModal = (report) => {
     setSelected(report);
@@ -161,7 +256,7 @@ const OnProcess = () => {
     setShowImageFull(false);
   };
 
-  // --------- Resolution flow ----------
+  // -------- Resolution flow ----------
   const handleOpenResolve = () => {
     setResolutionImage(null);
     setResolutionNotes("");
@@ -172,7 +267,7 @@ const OnProcess = () => {
     if (!resolutionImage) return null;
     const formData = new FormData();
     formData.append("file", resolutionImage);
-    formData.append("upload_preset", "supportlink"); // same preset as ReportModule
+    formData.append("upload_preset", "supportlink");
 
     try {
       const res = await axios.post(
@@ -187,63 +282,141 @@ const OnProcess = () => {
     }
   };
 
-  // MOVE from onProcess → resolvedReports with extra resolution fields
   const handleResolve = async () => {
-    if (!selected?.id || resolving) return;
+  if (!selected?.id || resolving) return;
 
-    // Grab resolver details (from users map)
-    const me = usersById[myUid] || {};
-    const resolvedByName = me.name || "—";
-    const resolvedByDept = me.department || "—";
+  // who resolved (staff/admin)
+  const me = usersById[myUid] || {};
+  const resolvedByName = me.name || "—";
+  const resolvedByDept = me.department || "—";
 
-    setResolving(true);
-    try {
-      // upload image first (optional)
-      const resolvedImageUrl = await handleUploadResolution();
+  // who should approve (the original reporter)
+  const reporter = usersById[selected.uid] || {};
+  const reporterName = reporter.name || "User";
+  const reporterUid  = selected.uid || null;
 
-      const batch = writeBatch(db);
+  setResolving(true);
+  try {
+    const resolvedImageUrl = await handleUploadResolution();
 
-      const fromRef = doc(db, "onProcess", selected.id);
-      const toRef = doc(db, "resolvedReports", selected.id);
+    const batch = writeBatch(db);
+    const fromRef = doc(db, "onProcess", selected.id);
+    const toRef   = doc(db, "resolvedReports", selected.id);
 
-      const { id, ...rest } = selected;
+    const { id, ...rest } = selected;
 
-      batch.set(
-        toRef,
-        {
-          ...rest,
-          sourceReportId: id,
-          status: "Resolved",
-          resolvedAt: serverTimestamp(),
-          // resolution extras:
-          resolutionNotes: (resolutionNotes || "").trim(),
-          resolvedImageUrl: resolvedImageUrl || null,
-          resolvedByUid: myUid || null,
-          resolvedByName,
-          resolvedByDept,
-        },
-        { merge: true }
-      );
+    batch.set(
+      toRef,
+      {
+        ...rest,
+        sourceReportId: id,
 
-      batch.delete(fromRef);
-      await batch.commit();
+        // Existing resolution fields
+        status: "Resolved",
+        resolvedAt: serverTimestamp(),
+        resolutionNotes: (resolutionNotes || "").trim(),
+        resolvedImageUrl: resolvedImageUrl || null,
+        resolvedByUid: myUid || null,
+        resolvedByName,
+        resolvedByDept,
 
-      // close both modals
-      setResolveOpen(false);
-      setOpen(false);
-      setSelected(null);
-      setResolutionImage(null);
-      setResolutionNotes("");
-    } catch (err) {
-      console.error("[OnProcess] handleResolve error:", err);
-    } finally {
-      setResolving(false);
-    }
-  };
+        // NEW: user approval flow
+        userApprovalStatus: "pending",         // 'pending' | 'approved' | 'declined'
+        userApprovalPendingForUid: reporterUid,
+        userApprovalPendingForName: reporterName,
+        userApprovalAt: null,                  // will be set when user approves/declines
+        userApprovalNotes: null,               // optional; used on decline
+      },
+      { merge: true }
+    );
+
+    batch.delete(fromRef);
+    await batch.commit();
+
+    setResolveOpen(false);
+    setOpen(false);
+    setSelected(null);
+    setResolutionImage(null);
+    setResolutionNotes("");
+  } catch (err) {
+    console.error("[OnProcess] handleResolve error:", err);
+  } finally {
+    setResolving(false);
+  }
+};
 
   return (
     <div className="pb-6">
-      <h1 className="text-2xl sm:text-3xl font-semibold">On Process Report List</h1>
+      {/* Header + counts */}
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+        <h1 className="text-2xl sm:text-3xl font-semibold">On Process Report List</h1>
+        <div className="text-sm text-gray-600">
+          Showing <span className="font-semibold">{filteredCount}</span> of{" "}
+          <span className="font-semibold">{totalCount}</span>
+        </div>
+      </div>
+
+      {/* Filter Toolbar */}
+      <div className="mt-4 bg-white rounded-xl border-2 border-[#1C1D21] shadow-sm p-3 sm:p-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          {/* Search */}
+          <div className="lg:col-span-2">
+            <label className="block text-xs text-gray-600 mb-1">Search</label>
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Name, department, details…"
+              className="w-full border rounded px-3 py-2 text-sm"
+            />
+          </div>
+
+          {/* From */}
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">From</label>
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              className="w-full border rounded px-2 py-2 text-sm"
+            />
+          </div>
+
+          {/* To */}
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">To</label>
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              className="w-full border rounded px-2 py-2 text-sm"
+            />
+          </div>
+
+          {/* Sort */}
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Sort</label>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value)}
+              className="w-full border rounded px-2 py-2 text-sm bg-white"
+            >
+              <option value="newest">Newest → Oldest</option>
+              <option value="oldest">Oldest → Newest</option>
+              <option value="nameAsc">Reporter A → Z</option>
+              <option value="nameDesc">Reporter Z → A</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            onClick={resetFilters}
+            className="px-3 py-2 text-sm rounded border hover:bg-gray-50"
+          >
+            Reset
+          </button>
+        </div>
+      </div>
 
       {/* Loading */}
       {loading && (
@@ -257,7 +430,13 @@ const OnProcess = () => {
 
       {/* Empty */}
       {!loading && filtered.length === 0 && (
-        <div className="mt-6 text-gray-600">No reports in process for your role.</div>
+        <div className="mt-6 text-gray-600 text-center">
+          {scoped.length === 0
+            ? "No reports are currently in process."
+            : hasFilters
+            ? "No reports in process matched your filters."
+            : "No reports are currently in process."}
+        </div>
       )}
 
       {/* List */}
@@ -266,7 +445,7 @@ const OnProcess = () => {
           {filtered.map((r) => (
             <div
               key={r.id}
-              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#0A1936] text-white px-4 py-3 rounded"
+              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#1C1D21] text-white px-4 py-3 rounded"
             >
               <p className="text-sm sm:text-base">
                 <span className="font-semibold">{r.userName}</span> — {r.userDept} —{" "}
@@ -329,7 +508,6 @@ const OnProcess = () => {
             )}
 
             <div className="space-y-2 text-sm">
-              {/* Facilities/Hardware vs Software fields – keep same simple view here */}
               <div>
                 <span className="font-semibold">Building Name:</span>{" "}
                 {selected.buildingName || "—"}
@@ -344,7 +522,10 @@ const OnProcess = () => {
               </div>
               <div>
                 <span className="font-semibold">Platform / System Name:</span>{" "}
-                {selected.platformName || selected.systemName || selected.platform || "—"}
+                {selected.platformName ||
+                  selected.systemName ||
+                  selected.platform ||
+                  "—"}
               </div>
               <div>
                 <span className="font-semibold">Other Details:</span>{" "}
@@ -354,7 +535,7 @@ const OnProcess = () => {
 
             <div className="pt-5">
               <button
-                onClick={handleOpenResolve}
+                onClick={() => setResolveOpen(true)}
                 className="bg-[#F2B611] text-white p-2 w-full rounded hover:bg-yellow-400"
               >
                 Mark as Resolved
@@ -406,7 +587,7 @@ const OnProcess = () => {
               Attach an image (optional) and describe how the issue was resolved.
             </p>
 
-            {/* Upload / Take Photo (like ReportModule) */}
+            {/* Upload / Take Photo */}
             <div className="w-full">
               <div className="bg-gray-200 h-40 w-full flex items-center justify-center rounded mb-2 overflow-hidden relative">
                 {resolutionImage ? (
@@ -426,7 +607,6 @@ const OnProcess = () => {
                   </div>
                 ) : (
                   <div className="flex flex-col sm:flex-row gap-2 items-center justify-center">
-                    {/* Upload from files */}
                     <label className="cursor-pointer px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 text-sm font-semibold text-gray-700">
                       Upload Photo
                       <input
@@ -437,7 +617,6 @@ const OnProcess = () => {
                       />
                     </label>
 
-                    {/* Take photo with camera */}
                     <label className="cursor-pointer px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 text-sm font-semibold text-gray-700">
                       Take Photo
                       <input
@@ -453,7 +632,7 @@ const OnProcess = () => {
               </div>
             </div>
 
-            {/* Resolution notes */}
+            {/* Notes */}
             <div className="mt-3">
               <label className="block text-sm font-semibold mb-1">Resolution Summary</label>
               <textarea
@@ -468,7 +647,9 @@ const OnProcess = () => {
             {/* Submit */}
             <div className="pt-4">
               <button
-                onClick={handleResolve}
+                onClick={async () => {
+                  await handleResolve();
+                }}
                 disabled={resolving}
                 className="bg-[#0A1936] text-white px-4 py-2 rounded w-full disabled:opacity-60"
               >

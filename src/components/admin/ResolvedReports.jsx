@@ -39,6 +39,24 @@ const ResolvedReports = () => {
     localStorage.getItem("uid") ||
     "";
 
+  const renderUserApprovalChip = (r) => {
+    const s = (r.userApprovalStatus || "pending").toLowerCase();
+    if (s === "approved") {
+      return <span className=" text-green-500 text-xs px-2 py-1 rounded">Resolved (Approved by User)</span>;
+    }
+    if (s === "declined") {
+      return <span className="text-red-500 text-xs px-2 py-1 rounded">Not Resolved (Declined by User)</span>;
+    }
+    // pending
+    const pendingFor = r.userApprovalPendingForName || "User";
+    return (
+      <span className=" text-black text-xs px-2 py-1 rounded">
+        Pending for {pendingFor} approval
+      </span>
+    );
+  };
+
+
   // roles → allowed service types & hide actions for assistant admins
   const allowedTypesForRole = (role) => {
     switch (role) {
@@ -64,7 +82,7 @@ const ResolvedReports = () => {
   const allowedTypes = allowedTypesForRole(myRole);
   const hideActions =
     myRole === "MIS Asst. Admin" || myRole === "CSD Asst. Admin";
-  const COLS = hideActions ? 4 : 5;
+  const COLS = hideActions ? 5 : 6;
 
   useEffect(() => {
     const unsub = onSnapshot(
@@ -96,8 +114,8 @@ const ResolvedReports = () => {
         ts && typeof ts.toDate === "function"
           ? ts.toDate()
           : ts instanceof Date
-          ? ts
-          : null;
+            ? ts
+            : null;
       if (!d) return "—";
       return d.toLocaleString(undefined, {
         year: "numeric",
@@ -242,48 +260,60 @@ const ResolvedReports = () => {
       <div className="flex-1 min-h-0 mt-6 overflow-y-auto pb-28">
         <div className="overflow-x-auto">
           <table className="min-w-full border-collapse">
-            <thead className="bg-[#F2B611]">
+            <thead className="bg-[#494949]">
               <tr>
-                <th className="border-black border-2 p-2 text-center">Building</th>
-                <th className="border-black border-2 p-2 text-center">Floor Location</th>
-                <th className="border-black border-2 p-2 text-center">Description</th>
-                <th className="border-black border-2 p-2 text-center">Date Resolved</th>
+                <th className="border-white border-2 p-2 text-white text-center">Building</th>
+                <th className="border-white border-2 p-2 text-white text-center">Floor Location</th>
+                <th className="border-white border-2 p-2 text-white text-center">Description</th>
+                <th className="border-white border-2 p-2 text-white text-center">Status</th>
+                <th className="border-white border-2 p-2 text-white text-center">Date Resolved</th>
                 {!hideActions && (
-                  <th className="border-black border-2 p-2 text-center">Action</th>
+                  <th className="border-white border-2 p-2 text-white text-center">Action</th>
                 )}
               </tr>
             </thead>
+
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
                   <td
                     colSpan={COLS}
-                    className="border-black border-2 p-4 text-center text-gray-500"
+                    className="border-white border-2 p-4 text-center text-gray-500"
                   >
                     {allowedTypes.length === 0
                       ? "No reports available for your role."
                       : search
-                      ? "No matching reports."
-                      : "No resolved reports yet."}
+                        ? "No matching reports."
+                        : "No resolved reports yet."}
                   </td>
                 </tr>
               ) : (
                 filtered.map((r) => (
-                  <tr key={r.id}>
-                    <td className="border-black border-2 p-2 text-center">
+                  <tr
+                    key={r.id}
+                    className="odd:bg-[#FFE7F6] even:bg-[#C8C8C8]"
+                  >
+                    <td className="border-white border-2 p-2 text-center">
                       {r.buildingName || "—"}
                     </td>
-                    <td className="border-black border-2 p-2 text-center">
+                    <td className="border-white border-2 p-2 text-center">
                       {r.floorLocation || "—"}
                     </td>
-                    <td className="border-black border-2 p-2 text-center">
+                    <td className="border-white border-2 p-2 text-center">
                       {r.additionalDetails || "—"}
                     </td>
-                    <td className="border-black border-2 p-2 text-center">
+
+                    {/* NEW: Status cell */}
+                    <td className="border-white border-2 p-2 text-center">
+                      {renderUserApprovalChip(r)}
+                    </td>
+
+                    <td className="border-white border-2 p-2 text-center">
                       {formatDateTime(r.resolvedAt || r.serverTimeStamp)}
                     </td>
+
                     {!hideActions && (
-                      <td className="border-black border-2 p-2 text-center">
+                      <td className="border-white border-2 p-2 text-center">
                         <div className="flex justify-center items-center">
                           <button
                             onClick={() => handleDelete(r)}

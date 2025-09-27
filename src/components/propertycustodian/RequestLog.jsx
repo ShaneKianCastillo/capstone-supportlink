@@ -198,64 +198,86 @@ const RequestLog = () => {
       <div className="flex-1 min-h-0 mt-6 overflow-y-auto pb-28">
         <div className="overflow-x-auto">
           <table className="min-w-full border-collapse">
-            <thead className="bg-[#F2B611]">
-              <tr>
-                <th className="border-black border-2 p-2 text-center">Asset Name</th>
-                <th className="border-black border-2 p-2 text-center">Reason</th>
-                <th className="border-black border-2 p-2 text-center">Status</th>
-                <th className="border-black border-2 p-2 text-center">Requested At</th>
-                <th className="border-black border-2 p-2 text-center">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="border-black border-2 p-4 text-center text-gray-500">
-                    {statusFilter !== "All" || search
-                      ? "No matching requests."
-                      : "No approved/declined requests yet."}
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((r) => (
-                  <tr key={r.id}>
-                    <td className="border-black border-2 p-2 text-center">{r.assetName || "—"}</td>
-                    <td className="border-black border-2 p-2 text-center truncate max-w-[220px]" title={r.reason || ""}>
-                      {r.reason || "—"}
-                    </td>
-                    <td className="border-black border-2 p-2 text-center">{r.status || "—"}</td>
-                    <td className="border-black border-2 p-2 text-center">{formatDateTime(r.serverTimeStamp)}</td>
-                    <td className="border-black border-2 p-2 text-center">
-                      <div className="flex justify-center items-center gap-2">
-                        {(r.status || "").toLowerCase() === "declined" && (r.declineReason || "").trim() && (
-                          <button
-                            onClick={() =>
-                              Swal.fire({
-                                title: "Decline Reason",
-                                text: r.declineReason,
-                                icon: "info",
-                              })
-                            }
-                            className="px-3 py-2 border rounded hover:bg-gray-100 transition-colors"
-                          >
-                            View Message
-                          </button>
-                        )}
+  <thead className="bg-[#494949]">
+    <tr>
+      <th className="border-white border-2 p-2 text-white text-center">Asset Name</th>
+      <th className="border-white border-2 p-2 text-white text-center">Reason</th>
+      <th className="border-white border-2 p-2 text-white text-center">Status</th>
+      <th className="border-white border-2 p-2 text-white text-center">Requested At</th>
+      <th className="border-white border-2 p-2 text-white text-center">Action</th>
+    </tr>
+  </thead>
 
-                        <button
-                          onClick={() => handleDelete(r)}
-                          className="flex justify-center items-center bg-red-500 px-3 py-2 rounded text-white font-semibold gap-1 hover:bg-red-600 transition-colors"
-                          title="Delete permanently"
-                        >
-                          <Trash2 /> Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+  <tbody>
+    {filtered.length === 0 ? (
+      <tr>
+        <td
+          colSpan={5}
+          className="border-white border-2 p-4 text-center text-gray-500"
+        >
+          {statusFilter !== "All" || search
+            ? "No matching requests."
+            : "No approved/declined requests yet."}
+        </td>
+      </tr>
+    ) : (
+      filtered.map((r) => (
+        <tr
+          key={r.id}
+          className="odd:bg-[#FFE7F6] even:bg-[#C8C8C8]" // striped rows to match User Management
+        >
+          <td className="border-white border-2 p-2 text-center">
+            {r.assetName || "—"}
+          </td>
+
+          <td
+            className="border-white border-2 p-2 text-center truncate max-w-[220px]"
+            title={r.reason || ""}
+          >
+            {r.reason || "—"}
+          </td>
+
+          <td className="border-white border-2 p-2 text-center">
+            {r.status || "—"}
+          </td>
+
+          <td className="border-white border-2 p-2 text-center">
+            {formatDateTime(r.serverTimeStamp)}
+          </td>
+
+          <td className="border-white border-2 p-2 text-center">
+            <div className="flex justify-center items-center gap-2">
+              {(r.status || "").toLowerCase() === "declined" &&
+                (r.declineReason || "").trim() && (
+                  <button
+                    onClick={() =>
+                      Swal.fire({
+                        title: "Decline Reason",
+                        text: r.declineReason,
+                        icon: "info",
+                      })
+                    }
+                    className="px-3 py-2 border rounded hover:bg-gray-100 transition-colors"
+                  >
+                    View Message
+                  </button>
+                )}
+
+              <button
+                onClick={() => handleDelete(r)}
+                className="flex justify-center items-center bg-red-500 px-3 py-2 rounded text-white font-semibold gap-1 hover:bg-red-600 transition-colors"
+                title="Delete permanently"
+              >
+                <Trash2 /> Delete
+              </button>
+            </div>
+          </td>
+        </tr>
+      ))
+    )}
+  </tbody>
+</table>
+
         </div>
       </div>
 

@@ -180,8 +180,8 @@ const UserManagement = () => {
         ts && typeof ts.toDate === "function"
           ? ts.toDate()
           : ts instanceof Date
-          ? ts
-          : null;
+            ? ts
+            : null;
       if (!d) return "—";
       return d.toLocaleDateString(undefined, {
         year: "numeric",
@@ -258,15 +258,15 @@ const UserManagement = () => {
         <div className="flex-1 min-h-0 mt-6 overflow-y-auto pb-28">
           <div className="overflow-x-auto">
             <table className="min-w-full border-collapse">
-              <thead className="bg-[#F2B611]">
+              <thead className="bg-[#494949]">
                 <tr>
-                  <th className="border-black border-2 p-2 text-center">Email</th>
-                  <th className="border-black border-2 p-2 text-center">Name</th>
-                  <th className="border-black border-2 p-2 text-center">Role</th>
-                  <th className="border-black border-2 p-2 text-center">Department</th>
-                  <th className="border-black border-2 p-2 text-center">Date Created</th>
+                  <th className="border-white text-white border-2 p-2 text-center">Email</th>
+                  <th className="border-white text-white border-2 p-2 text-center">Name</th>
+                  <th className="border-white text-white border-2 p-2 text-center">Role</th>
+                  <th className="border-white text-white border-2 p-2 text-center">Department</th>
+                  <th className="border-white text-white border-2 p-2 text-center">Date Created</th>
                   {!hideActions && (
-                    <th className="border-black border-2 p-2 text-center">Actions</th>
+                    <th className="border-white border-2 p-2 text-white text-center">Actions</th>
                   )}
                 </tr>
               </thead>
@@ -274,7 +274,7 @@ const UserManagement = () => {
                 {pageUsers.length === 0 ? (
                   <tr>
                     <td
-                      className="border-black border-2 p-4 text-center text-gray-500"
+                      className="border-white border-2 p-4 text-center text-gray-500"
                       colSpan={COLS}
                     >
                       No users found.
@@ -282,24 +282,35 @@ const UserManagement = () => {
                   </tr>
                 ) : (
                   pageUsers.map((u) => (
-                    <tr key={u.id}>
-                      <td className="border-black border-2 p-2 text-center">{u.email || "—"}</td>
-                      <td className="border-black border-2 p-2 text-center">{u.name || "—"}</td>
-                      <td className="border-black border-2 p-2 text-center">{u.role || "—"}</td>
-                      <td className="border-black border-2 p-2 text-center">
+                    <tr
+                      key={u.id}
+                      className="odd:bg-[#FFE7F6] even:bg-[#C8C8C8]" // 👈 striped rows
+                    >
+                      <td className="border-white border-2 p-2 text-center">
+                        {u.email || "—"}
+                      </td>
+                      <td className="border-white border-2 p-2 text-center">
+                        {u.name || "—"}
+                      </td>
+                      <td className="border-white border-2 p-2 text-center">
+                        {u.role || "—"}
+                      </td>
+                      <td className="border-white border-2 p-2 text-center">
                         {(u.department || "").toUpperCase() || "—"}
                       </td>
-                      <td className="border-black border-2 p-2 text-center">{formatDate(u.createdAt)}</td>
+                      <td className="border-white border-2 p-2 text-center">
+                        {formatDate(u.createdAt)}
+                      </td>
 
-                      {/* Actions (hidden for assistant roles) */}
                       {!hideActions && (
-                        <td className="border-black border-2 p-2 text-center">
+                        <td className="border-white border-2 p-2 text-center">
                           <div className="flex justify-center items-center">
                             <button
                               onClick={() => toggleUserStatus(u)}
-                              className={`${
-                                u.disabled ? "bg-green-600 hover:bg-green-700" : "bg-red-500 hover:bg-red-600"
-                              } flex justify-center items-center px-3 font-semibold text-white rounded gap-2 py-2 cursor-pointer transition-colors`}
+                              className={`${u.disabled
+                                  ? "bg-green-600 hover:bg-green-700"
+                                  : "bg-red-500 hover:bg-red-600"
+                                } flex justify-center items-center px-3 font-semibold text-white rounded gap-2 py-2 cursor-pointer transition-colors`}
                             >
                               <Ban />
                               {u.disabled ? "Enable" : "Disable"}
@@ -312,6 +323,7 @@ const UserManagement = () => {
                 )}
               </tbody>
             </table>
+
           </div>
         </div>
       )}
@@ -322,9 +334,8 @@ const UserManagement = () => {
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page === 1}
-            className={`px-3 py-1 border rounded transition-colors ${
-              page === 1 ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-200"
-            }`}
+            className={`px-3 py-1 border rounded transition-colors ${page === 1 ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-200"
+              }`}
           >
             Previous
           </button>
@@ -334,9 +345,8 @@ const UserManagement = () => {
               <button
                 key={p}
                 onClick={() => setPage(p)}
-                className={`px-3 py-1 border rounded transition-colors ${
-                  p === page ? "bg-blue-500 text-white" : "hover:bg-gray-200"
-                }`}
+                className={`px-3 py-1 border rounded transition-colors ${p === page ? "bg-blue-500 text-white" : "hover:bg-gray-200"
+                  }`}
               >
                 {p}
               </button>
@@ -346,9 +356,8 @@ const UserManagement = () => {
           <button
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
-            className={`px-3 py-1 border rounded transition-colors ${
-              page === totalPages ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-200"
-            }`}
+            className={`px-3 py-1 border rounded transition-colors ${page === totalPages ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-200"
+              }`}
           >
             Next
           </button>

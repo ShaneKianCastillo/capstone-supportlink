@@ -12,6 +12,7 @@ import {
 import RequestList from "./RequestList";
 import RequestLog from "./RequestLog";
 import ChangePassword from "../user/ChangePassword";
+import capstoneLogo from "../../assets/capstoneLogo.png";
 
 import { auth } from "../../config/firebase";
 import { signOut } from "firebase/auth";
@@ -21,12 +22,12 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../../config/firebase";
 
 const SIDEBAR_W = "w-64";
+const HEADER_H = "h-20";
 
 const CustodianLayout = ({ setRole }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [currentView, setCurrentView] = useState("request-list"); // "request-list" | "request-log" | "password"
+  const [currentView, setCurrentView] = useState("request-list");
   const [showPwdModal, setShowPwdModal] = useState(false);
-
   const navigate = useNavigate();
 
   const [profile, setProfile] = useState({ name: "", role: "" });
@@ -70,92 +71,133 @@ const CustodianLayout = ({ setRole }) => {
       case "request-log":
         return <RequestLog />;
       case "password":
-        // We open modal instead of in-pane page, but keep a label in header
-        return null;
+        return null; // using modal
       default:
         return <RequestList />;
     }
   };
+
+  // Pink fill (hover + active persist)
+  const navLinkClass = (active) =>
+    [
+      "relative z-0 block w-full text-left px-4 py-2 rounded-md",
+      "flex items-center gap-2",
+      "text-gray-900 transition-colors duration-200",
+      "hover:text-white",
+      active ? "text-white" : "",
+      "before:content-[''] before:absolute before:inset-0 before:rounded-md",
+      "before:bg-[#eb58b5] before:origin-left before:scale-x-0",
+      "before:transition-transform before:duration-300 before:ease-out",
+      "hover:before:scale-x-100",
+      active ? "before:scale-x-100" : "",
+      "before:-z-10",
+      "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#eb58b5]/40",
+    ].join(" ");
+
+  // Red fill for Logout
+  const logoutLinkClass = [
+    "relative z-0 block w-full text-left px-4 py-2 rounded-md",
+    "flex items-center gap-2 justify-center",
+    "text-red-700 transition-colors duration-200 hover:text-white",
+    "before:content-[''] before:absolute before:inset-0 before:rounded-md",
+    "before:bg-red-600 before:origin-left before:scale-x-0",
+    "before:transition-transform before:duration-300 before:ease-out",
+    "hover:before:scale-x-100 before:-z-10",
+    "focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300",
+  ].join(" ");
 
   return (
     <div className="relative min-h-screen bg-white">
       {/* Sidebar */}
       <aside
         className={`
-          fixed top-0 left-0 h-full ${SIDEBAR_W} bg-[#0A1936] text-white
+          fixed inset-y-0 left-0 ${SIDEBAR_W} bg-[whitesmoke] text-gray-800
           transform transition-transform duration-300 ease-in-out z-50
-          lg:translate-x-0 lg:static lg:block lg:min-h-[calc(100vh)]
+          h-[100dvh]
+          lg:translate-x-0 lg:static lg:block
           ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}
         `}
       >
-        {/* User header */}
-        <div className="p-4 pl-8 border-b border-gray-700 flex justify-between items-center lg:justify-start">
-          <div className="flex flex-col">
-            <h1 className="font-bold text-lg">{profile.name || "—"}</h1>
-            <h2 className="text-sm text-gray-300">{profile.role || "—"}</h2>
+        {/* Right-edge border/shadow (desktop starts below header) */}
+        <div
+          className="pointer-events-none hidden lg:block absolute right-0 w-px bg-gray-200 top-20 bottom-0"
+          style={{ boxShadow: "1px 0 6px rgba(0,0,0,0.06)" }}
+        />
+        {/* Full-height edge for mobile drawer */}
+        <div
+          className="pointer-events-none lg:hidden absolute right-0 top-0 bottom-0 w-px bg-gray-200"
+          style={{ boxShadow: "1px 0 6px rgba(0,0,0,0.08)" }}
+        />
+
+        {/* Full-height column */}
+        <div className="flex h-full flex-col">
+          {/* Top: Logo + close (mobile) */}
+          <div className="flex items-center justify-center relative px-4 pt-4 pb-3 flex-shrink-0">
+            <img src={capstoneLogo} alt="logo" className="h-20 w-auto drop-shadow" />
+            
+            <button
+              onClick={() => setIsSidebarOpen(false)}
+              className="absolute right-3 top-3 text-gray-600 hover:text-gray-800 lg:hidden"
+              aria-label="Close sidebar"
+            >
+              <X size={22} />
+            </button>
           </div>
-          <button
-            onClick={() => setIsSidebarOpen(false)}
-            className="text-white hover:text-gray-300 lg:hidden"
-          >
-            <X size={24} />
-          </button>
+
+          {/* Nav (scrollable) */}
+          <nav className="px-4 py-2 flex-1 overflow-y-auto">
+            <ul className="space-y-2">
+              <li>
+                <button
+                  onClick={() => navigateTo("request-list")}
+                  className={navLinkClass(currentView === "request-list")}
+                >
+                  <Package /> <span className="text-lg font-semibold">Request List</span>
+                </button>
+              </li>
+
+              <li>
+                <button
+                  onClick={() => navigateTo("request-log")}
+                  className={navLinkClass(currentView === "request-log")}
+                >
+                  <History /> <span className="text-lg font-semibold">Request Log</span>
+                </button>
+              </li>
+
+              <li>
+                <button
+                  onClick={() => {
+                    setCurrentView("password");
+                    setIsSidebarOpen(false);
+                    setShowPwdModal(true);
+                  }}
+                  className={navLinkClass(currentView === "password")}
+                >
+                  <Lock /> <span className="text-lg font-semibold">Change Password</span>
+                </button>
+              </li>
+            </ul>
+          </nav>
+
+          {/* Bottom (pinned) */}
+          <div className="px-4 pt-4 pb-6 bg-[whitesmoke] mt-auto">
+            <div className="mx-2 h-[3px] bg-[#eb58b5] rounded-full shadow-sm" />
+            <div className="mt-3 text-center">
+              <div className="text-sm tracking-widest font-extrabold text-gray-900">
+                {profile.name || "—"}
+              </div>
+              <div className="text-xs text-gray-700 font-semibold">
+                {profile.role || "—"}
+              </div>
+            </div>
+            <div className="mt-2">
+              <button onClick={handleLogout} className={logoutLinkClass}>
+                <LogOut /> <span className="text-sm font-semibold">LOGOUT</span>
+              </button>
+            </div>
+          </div>
         </div>
-
-        {/* Sidebar nav */}
-        <nav className="p-4">
-          <ul className="space-y-2">
-            {/* Request List */}
-            <li>
-              <button
-                onClick={() => navigateTo("request-list")}
-                className={`block p-2 rounded flex items-center gap-2 hover:bg-blue-500 w-full text-left ${
-                  currentView === "request-list" ? "bg-blue-500" : ""
-                }`}
-              >
-                <Package /> Request List
-              </button>
-            </li>
-
-            {/* Request Log */}
-            <li>
-              <button
-                onClick={() => navigateTo("request-log")}
-                className={`block p-2 rounded flex items-center gap-2 hover:bg-blue-500 w-full text-left ${
-                  currentView === "request-log" ? "bg-blue-500" : ""
-                }`}
-              >
-                <History /> Request Log
-              </button>
-            </li>
-
-            {/* Change Password (opens modal) */}
-            <li>
-              <button
-                onClick={() => {
-                  setCurrentView("password");
-                  setIsSidebarOpen(false);
-                  setShowPwdModal(true);
-                }}
-                className={`block p-2 rounded flex items-center gap-2 hover:bg-blue-500 w-full text-left ${
-                  currentView === "password" ? "bg-blue-500" : ""
-                }`}
-              >
-                <Lock /> Change Password
-              </button>
-            </li>
-
-            {/* Logout */}
-            <li>
-              <button
-                onClick={handleLogout}
-                className="block p-2 rounded flex items-center gap-2 hover:bg-blue-500 w-full text-left"
-              >
-                <LogOut /> Logout
-              </button>
-            </li>
-          </ul>
-        </nav>
       </aside>
 
       {/* Drawer overlay (mobile) */}
@@ -166,25 +208,30 @@ const CustodianLayout = ({ setRole }) => {
         />
       )}
 
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 bg-[#0A1936] h-20 z-40 lg:ml-64">
+      {/* Header (no logo) */}
+      <header
+        className={`
+          fixed top-0 left-0 right-0 ${HEADER_H} bg-[whitesmoke] z-40 lg:ml-64
+          border-b border-gray-200 shadow-sm
+        `}
+      >
         <div className="h-full w-full flex items-center justify-between px-4">
-          {/* Toggle (mobile/tablet) */}
           <button
-            className="text-white lg:hidden"
+            className="text-gray-700 lg:hidden"
             onClick={() => setIsSidebarOpen(true)}
             aria-label="Open sidebar"
           >
             <AlignJustify />
           </button>
 
-          <h1 className="text-white text-xl font-semibold">
+          <h1 className="text-gray-900 text-xl font-semibold lg:text-2xl">
             {currentView === "request-list" && "Request List"}
             {currentView === "request-log" && "Request Log"}
             {currentView === "password" && "Change Password"}
           </h1>
 
-          <img src={logo} alt="logo" className="h-10" />
+        {/* spacer keeps title centered */}
+          <div className="w-6" />
         </div>
       </header>
 
@@ -199,11 +246,6 @@ const CustodianLayout = ({ setRole }) => {
           {renderContent()}
         </div>
       </main>
-
-      {/* Footer */}
-      {/* <footer className="fixed bottom-0 left-0 right-0 bg-[#0A1936] h-20 flex items-center justify-center text-white z-30 lg:ml-64">
-        <h1 className="text-base sm:text-lg font-bold">DCT SupportLink</h1>
-      </footer> */}
 
       {/* Change Password modal */}
       <ChangePassword

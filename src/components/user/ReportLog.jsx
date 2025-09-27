@@ -24,8 +24,8 @@ const ReportLog = () => {
   // status filter: 'All' | 'Pending' | 'On Process' | 'Resolved'
   const [statusFilter, setStatusFilter] = useState('All');
 
-  const userReportRef      = collection(db, 'userReport');
-  const onProcessRef       = collection(db, 'onProcess');
+  const userReportRef = collection(db, 'userReport');
+  const onProcessRef = collection(db, 'onProcess');
   const resolvedReportsRef = collection(db, 'resolvedReports');
 
   const uid = (localStorage.getItem('uid') || '').trim();
@@ -94,7 +94,7 @@ const ReportLog = () => {
 
         const [snapUserReport, snapOnProcess, snapResolved] = await Promise.all([
           getDocs(query(userReportRef, where('uid', '==', uid))),
-          getDocs(query(onProcessRef,  where('uid', '==', uid))),
+          getDocs(query(onProcessRef, where('uid', '==', uid))),
           getDocs(query(resolvedReportsRef, where('uid', '==', uid))),
         ]);
 
@@ -155,7 +155,7 @@ const ReportLog = () => {
       const d =
         ts && typeof ts.toDate === 'function' ? ts.toDate()
           : ts instanceof Date ? ts
-          : null;
+            : null;
       if (!d) return '—';
       return d.toLocaleString(undefined, {
         year: 'numeric',
@@ -169,19 +169,28 @@ const ReportLog = () => {
     }
   };
 
-  const StatusChip = ({ status }) => {
-    const s = (status || '').toLowerCase();
-    const bg =
-      s === 'resolved'   ? 'bg-green-600'  :
-      s === 'on process' ? 'bg-yellow-500' :
-      s === 'pending'    ? 'bg-gray-500'   :
-                           'bg-slate-500';
-    return (
-      <span className={`${bg} text-white text-xs px-2 py-1 rounded`}>
-        {status || '—'}
-      </span>
-    );
+  const StatusChip = ({ status, approval }) => {
+    const s = (status || '').toLowerCase();              // 'pending' | 'on process' | 'resolved'
+    const a = (approval || 'pending').toLowerCase();     // 'pending' | 'approved' | 'declined'
+
+    if (s === 'resolved') {
+      if (a === 'approved')
+        return <span className="bg-green-600 text-white text-xs px-2 py-1 rounded">Resolved (Approved)</span>;
+      if (a === 'declined')
+        return <span className="bg-red-600 text-white text-xs px-2 py-1 rounded">Not Resolved</span>;
+      // pending
+      return <span className="bg-yellow-500 text-white text-xs px-2 py-1 rounded">Resolved (Pending Your Approval)</span>;
+    }
+
+    if (s === 'on process')
+      return <span className="bg-yellow-500 text-white text-xs px-2 py-1 rounded">On Process</span>;
+
+    if (s === 'pending')
+      return <span className="bg-gray-500 text-white text-xs px-2 py-1 rounded">Pending</span>;
+
+    return <span className="bg-slate-500 text-white text-xs px-2 py-1 rounded">{status || '—'}</span>;
   };
+
 
   // Counts (visible items only)
   const counts = useMemo(() => {
@@ -411,6 +420,95 @@ const ReportLog = () => {
     }
   };
 
+  // ---- USER APPROVAL ACTIONS (Resolved items) ----
+  const approveResolution = async (report) => {
+    try {
+      if (uid !== report.uid) {
+        await Swal.fire('Not allowed', 'Only the original reporter can approve.', 'info');
+        return;
+      }
+      if ((report.userApprovalStatus || 'pending') === 'approved') {
+        await Swal.fire('Already approved', 'This resolution is already approved.', 'info');
+        return;
+      }
+
+      const ok = await Swal.fire({
+        title: 'Confirm Approval',
+        text: 'Confirm that the issue is resolved.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Approve',
+      });
+      if (!ok.isConfirmed) return;
+
+      await updateDoc(doc(db, 'resolvedReports', report.id), {
+        userApprovalStatus: 'approved',
+        userApprovalAt: serverTimestamp(),
+        userApprovalByUid: uid,
+        userApprovalNotes: null,
+      });
+
+      await Swal.fire('Approved', 'Thanks for confirming the fix.', 'success');
+
+      // Optimistic UI update
+      setAllReports(prev =>
+        prev.map(r =>
+          r._collection === 'resolvedReports' && r.id === report.id
+            ? { ...r, userApprovalStatus: 'approved' }
+            : r
+        )
+      );
+    } catch (e) {
+      console.error('approveResolution error:', e);
+      await Swal.fire('Error', 'Could not approve the resolution.', 'error');
+    }
+  };
+
+  const declineResolution = async (report) => {
+    try {
+      if (uid !== report.uid) {
+        await Swal.fire('Not allowed', 'Only the original reporter can decline.', 'info');
+        return;
+      }
+      if ((report.userApprovalStatus || 'pending') === 'declined') {
+        await Swal.fire('Already declined', 'This resolution is already declined.', 'info');
+        return;
+      }
+
+      const { value: reason, isConfirmed } = await Swal.fire({
+        title: 'Decline Resolution',
+        input: 'textarea',
+        inputLabel: 'Tell us what is still wrong',
+        inputPlaceholder: 'Optional notes...',
+        inputAttributes: { 'aria-label': 'Decline reason' },
+        showCancelButton: true,
+        confirmButtonText: 'Decline',
+      });
+      if (!isConfirmed) return;
+
+      await updateDoc(doc(db, 'resolvedReports', report.id), {
+        userApprovalStatus: 'declined',
+        userApprovalAt: serverTimestamp(),
+        userApprovalByUid: uid,
+        userApprovalNotes: (reason || '').trim() || null,
+      });
+
+      await Swal.fire('Noted', 'We marked this as not resolved. A staff member will review.', 'success');
+
+      // Optimistic UI update
+      setAllReports(prev =>
+        prev.map(r =>
+          r._collection === 'resolvedReports' && r.id === report.id
+            ? { ...r, userApprovalStatus: 'declined', userApprovalNotes: (reason || '').trim() || null }
+            : r
+        )
+      );
+    } catch (e) {
+      console.error('declineResolution error:', e);
+      await Swal.fire('Error', 'Could not decline the resolution.', 'error');
+    }
+  };
+
   return (
     <div className="w-full">
       {/* LOADING OVERLAY */}
@@ -426,7 +524,7 @@ const ReportLog = () => {
       )}
 
       {/* Outer container */}
-      <div className="mx-auto w-full max-w-lg sm:max-w-xl md:max-w-2xl lg:max-w-3xl xl-max-w-4xl px-4 sm:px-6 lg:px-8 py-6">
+      <div className="mx-auto w-full max-w-lg sm:max-w-xl md:max-w-2xl lg:max-w-3xl xl-max-w-4xl px-4 sm:px-6 lg:px-8 py-6 ">
 
         {/* Controls: Filter + counts */}
         <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between mb-4">
@@ -466,20 +564,22 @@ const ReportLog = () => {
         {/* List */}
         {!loading && !error && filteredList.map((report, index) => {
           const isResolved = (report.status || '').toLowerCase() === 'resolved';
-          const isPending  = (report.status || '').toLowerCase() === 'pending';
+          const isPending = (report.status || '').toLowerCase() === 'pending';
           const isEditable = isPending && report._collection === 'userReport'; // only pending in userReport can be edited
 
           return (
             <div key={`${report._collection}:${report.id}`} className="w-full rounded overflow-hidden mb-4">
               {/* Header */}
               <div
-                className="h-10 rounded flex justify-between items-center bg-[#0A1936] px-3 cursor-pointer select-none"
+                className="h-[50px] rounded flex justify-between items-center bg-[#1C1D21] px-3 cursor-pointer select-none"
                 onClick={() => setIsOpen(isOpen === index ? null : index)}
               >
                 {/* Left: Status chip */}
+                {/* Left: Status chip */}
                 <div className="flex items-center gap-2">
-                  <StatusChip status={report.status} />
+                  <StatusChip status={report.status} approval={report.userApprovalStatus} />
                 </div>
+
 
                 {/* Right: text + chevron */}
                 <span className="text-white flex justify-center items-center gap-1">
@@ -580,6 +680,26 @@ const ReportLog = () => {
                   </div>
                 )}
 
+                {/* Approval controls for the reporter when Resolved + pending */}
+                {(report.status || '').toLowerCase() === 'resolved' &&
+                  uid === report.uid &&
+                  (report.userApprovalStatus || 'pending') === 'pending' && (
+                    <div className="mt-4 flex flex-col sm:flex-row gap-2 justify-center">
+                      <button
+                        className="px-4 py-2 rounded bg-green-600 text-white font-semibold hover:bg-green-700"
+                        onClick={() => approveResolution(report)}
+                      >
+                        Approve — Issue Resolved
+                      </button>
+                      <button
+                        className="px-4 py-2 rounded bg-red-600 text-white font-semibold hover:bg-red-700"
+                        onClick={() => declineResolution(report)}
+                      >
+                        Decline — Not Resolved
+                      </button>
+                    </div>
+                  )}
+
                 {/* Remove button ONLY for Resolved */}
                 {(report.status || '').toLowerCase() === 'resolved' && (
                   <div className="flex justify-center bg-red-600 mt-4 py-2 rounded text-white cursor-pointer hover:bg-red-700">
@@ -622,9 +742,8 @@ const ReportLog = () => {
                 {SERVICE_TYPES.map((t) => (
                   <label
                     key={t}
-                    className={`border rounded px-3 py-2 text-sm cursor-pointer ${
-                      svcType === t ? 'border-[#0A1936] ring-1 ring-[#0A1936]' : 'border-gray-300'
-                    }`}
+                    className={`border rounded px-3 py-2 text-sm cursor-pointer ${svcType === t ? 'border-[#0A1936] ring-1 ring-[#0A1936]' : 'border-gray-300'
+                      }`}
                   >
                     <input
                       type="radio"

@@ -183,72 +183,80 @@ const ChatSettings = () => {
       {/* Presets table */}
       <div className="mt-6 overflow-x-auto">
         <table className="min-w-full border-collapse">
-          <thead className="bg-[#F2B611]">
-            <tr>
-              <th className="border-black border-2 p-2 text-center">Question</th>
-              <th className="border-black border-2 p-2 text-center">Solution (preview)</th>
-              <th className="border-black border-2 p-2 text-center">Created By</th>
-              <th className="border-black border-2 p-2 text-center">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td className="border-black border-2 p-4 text-center text-gray-500" colSpan={4}>
-                  Loading…
-                </td>
-              </tr>
-            ) : list.length === 0 ? (
-              <tr>
-                <td className="border-black border-2 p-4 text-center text-gray-500" colSpan={4}>
-                  No presets yet.
-                </td>
-              </tr>
-            ) : (
-              list.map((row) => (
-                <tr key={row.id}>
-                  <td className="border-black border-2 p-2 text-sm">{row.question || "—"}</td>
-                  <td className="border-black border-2 p-2 text-sm">
-                    {(row.answers || []).slice(0, 3).join(" • ")}
-                    {(row.answers || []).length > 3 ? " …" : ""}
-                  </td>
-                  <td className="border-black border-2 p-2 text-center text-sm">
-                    {(row.createdByName || "—")} <span className="text-gray-400">•</span>{" "}
-                    {(row.createdByRole || "—")}
-                  </td>
-                  <td className="border-black border-2 p-2">
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        onClick={() => openEdit(row)}
-                        disabled={!canEdit(row)}
-                        className={`px-3 py-1 rounded text-white flex items-center gap-1 ${
-                          canEdit(row)
-                            ? "bg-blue-600 hover:bg-blue-700"
-                            : "bg-gray-400 cursor-not-allowed"
-                        }`}
-                        title={canEdit(row) ? "Edit" : "You can only edit your own"}
-                      >
-                        <Edit size={16} /> Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(row)}
-                        disabled={!canEdit(row)}
-                        className={`px-3 py-1 rounded text-white flex items-center gap-1 ${
-                          canEdit(row)
-                            ? "bg-red-600 hover:bg-red-700"
-                            : "bg-gray-400 cursor-not-allowed"
-                        }`}
-                        title={canEdit(row) ? "Delete" : "You can only delete your own"}
-                      >
-                        <Trash2 size={16} /> Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+  <thead className="bg-[#494949]">
+    <tr>
+      <th className="border-white text-white border-2 p-2 text-center">Question</th>
+      <th className="border-white text-white border-2 p-2 text-center">Solution (preview)</th>
+      <th className="border-white text-white border-2 p-2 text-center">Created By</th>
+      <th className="border-white text-white border-2 p-2 text-center">Actions</th>
+    </tr>
+  </thead>
+
+  <tbody>
+    {loading ? (
+      <tr>
+        <td className="border-white border-2 p-4 text-center text-gray-500" colSpan={4}>
+          Loading…
+        </td>
+      </tr>
+    ) : list.length === 0 ? (
+      <tr>
+        <td className="border-white border-2 p-4 text-center text-gray-500" colSpan={4}>
+          No presets yet.
+        </td>
+      </tr>
+    ) : (
+      list.map((row) => (
+        <tr key={row.id} className="odd:bg-[#FFE7F6] even:bg-[#C8C8C8]">
+          <td className="border-white border-2 p-2 text-sm">
+            {row.question || "—"}
+          </td>
+
+          <td className="border-white border-2 p-2 text-sm">
+            {(row.answers || []).slice(0, 3).join(" • ")}
+            {(row.answers || []).length > 3 ? " …" : ""}
+          </td>
+
+          <td className="border-white border-2 p-2 text-center text-sm">
+            {(row.createdByName || "—")} <span className="text-gray-500">•</span>{" "}
+            {(row.createdByRole || "—")}
+          </td>
+
+          <td className="border-white border-2 p-2">
+            <div className="flex items-center justify-center gap-2">
+              <button
+                onClick={() => openEdit(row)}
+                disabled={!canEdit(row)}
+                className={`px-3 py-1 rounded text-white flex items-center gap-1 ${
+                  canEdit(row)
+                    ? "bg-blue-600 hover:bg-blue-700"
+                    : "bg-gray-400 cursor-not-allowed"
+                }`}
+                title={canEdit(row) ? "Edit" : "You can only edit your own"}
+              >
+                <Edit size={16} /> Edit
+              </button>
+
+              <button
+                onClick={() => handleDelete(row)}
+                disabled={!canEdit(row)}
+                className={`px-3 py-1 rounded text-white flex items-center gap-1 ${
+                  canEdit(row)
+                    ? "bg-red-600 hover:bg-red-700"
+                    : "bg-gray-400 cursor-not-allowed"
+                }`}
+                title={canEdit(row) ? "Delete" : "You can only delete your own"}
+              >
+                <Trash2 size={16} /> Delete
+              </button>
+            </div>
+          </td>
+        </tr>
+      ))
+    )}
+  </tbody>
+</table>
+
       </div>
 
       {/* Edit modal */}

@@ -169,7 +169,7 @@ const ReportModule = () => {
       <img
         src={dctLogo}
         alt="Background logo"
-        className="absolute inset-0 w-full h-full object-contain opacity-90 pointer-events-none"
+        className="absolute inset-0 w-full h-full object-contain opacity-50 pointer-events-none"
       />
 
       {/* Overlay for readability */}

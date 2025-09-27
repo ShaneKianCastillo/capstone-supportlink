@@ -142,7 +142,7 @@ const SentReports = () => {
     return () => unsub();
   }, []);
 
-  // Live list of reports  <-- fixed: no extra parenthesis
+  // Live list of reports
   useEffect(() => {
     const unsub = onSnapshot(
       query(collection(db, "userReport")),
@@ -167,14 +167,16 @@ const SentReports = () => {
 
   const loading = loadingReports || loadingUsers;
 
+  const toDate = (ts) =>
+    ts && typeof ts.toDate === "function"
+      ? ts.toDate()
+      : ts instanceof Date
+      ? ts
+      : null;
+
   const formatDateTime = (ts) => {
     try {
-      const d =
-        ts && typeof ts.toDate === "function"
-          ? ts.toDate()
-          : ts instanceof Date
-          ? ts
-          : null;
+      const d = toDate(ts);
       if (!d) return "—";
       return d.toLocaleString(undefined, {
         year: "numeric",
@@ -202,10 +204,104 @@ const SentReports = () => {
   }, [reports, usersById]);
 
   // 🔐 role-based filtering by serviceType
-  const filtered = useMemo(() => {
+  const scoped = useMemo(() => {
     if (!allowedTypes.length) return [];
     return combined.filter((r) => allowedTypes.includes(r.serviceType || ""));
   }, [combined, allowedTypes]);
+
+  // ---------------- Filters & Sort State ----------------
+  const [q, setQ] = useState(""); // search
+  const [dept, setDept] = useState("ALL");
+  const [svc, setSvc] = useState("ALL");
+  const [sort, setSort] = useState("newest"); // newest | oldest | nameAsc | nameDesc
+  const [from, setFrom] = useState(""); // yyyy-mm-dd
+  const [to, setTo] = useState("");
+
+  const resetFilters = () => {
+    setQ("");
+    setDept("ALL");
+    setSvc("ALL");
+    setSort("newest");
+    setFrom("");
+    setTo("");
+  };
+
+  // Build department options dynamically from visible rows
+  const departmentOptions = useMemo(() => {
+    const set = new Set();
+    scoped.forEach((r) => r.userDept && set.add(r.userDept));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [scoped]);
+
+  // Apply filtering & sorting
+  const filtered = useMemo(() => {
+    let rows = [...scoped];
+
+    if (svc !== "ALL") rows = rows.filter((r) => (r.serviceType || "") === svc);
+    if (dept !== "ALL") rows = rows.filter((r) => (r.userDept || "") === dept);
+
+    // date range filter (based on serverTimeStamp)
+    if (from) {
+      const fromDate = new Date(from);
+      rows = rows.filter((r) => {
+        const d = toDate(r.serverTimeStamp);
+        return d ? d >= fromDate : false;
+      });
+    }
+    if (to) {
+      // include the whole 'to' day by adding 1 day and using <
+      const toDateEdge = new Date(to);
+      toDateEdge.setDate(toDateEdge.getDate() + 1);
+      rows = rows.filter((r) => {
+        const d = toDate(r.serverTimeStamp);
+        return d ? d < toDateEdge : false;
+      });
+    }
+
+    if (q.trim()) {
+      const needle = q.toLowerCase();
+      rows = rows.filter((r) => {
+        const fields = [
+          r.userName,
+          r.userDept,
+          r.additionalDetails,
+          r.platformName,
+          r.systemName,
+          r.platform,
+          r.buildingName,
+          r.floorLocation,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return fields.includes(needle);
+      });
+    }
+
+    // sorting
+    rows.sort((a, b) => {
+      if (sort === "oldest") {
+        const ta = a.serverTimeStamp?.toMillis?.() ?? 0;
+        const tb = b.serverTimeStamp?.toMillis?.() ?? 0;
+        return ta - tb;
+      }
+      if (sort === "nameAsc" || sort === "nameDesc") {
+        const na = (a.userName || "").toLowerCase();
+        const nb = (b.userName || "").toLowerCase();
+        const cmp = na.localeCompare(nb);
+        return sort === "nameAsc" ? cmp : -cmp;
+      }
+      // newest
+      const ta = a.serverTimeStamp?.toMillis?.() ?? 0;
+      const tb = b.serverTimeStamp?.toMillis?.() ?? 0;
+      return tb - ta;
+    });
+
+    return rows;
+  }, [scoped, svc, dept, from, to, q, sort]);
+
+  const totalCount = scoped.length;
+  const filteredCount = filtered.length;
 
   const openModal = (report) => {
     setSelected(report);
@@ -326,7 +422,77 @@ const SentReports = () => {
 
   return (
     <div className="pb-6">
-      <h1 className="text-2xl sm:text-3xl font-semibold">Sent Report List</h1>
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+        <h1 className="text-2xl sm:text-3xl font-semibold">Sent Report List</h1>
+        <div className="text-sm text-gray-600">
+          Showing <span className="font-semibold">{filteredCount}</span> of{" "}
+          <span className="font-semibold">{totalCount}</span>
+        </div>
+      </div>
+
+      {/* Filter Toolbar */}
+      <div className="mt-4 bg-white rounded-xl border-2 border-[#1C1D21] shadow-sm p-3 sm:p-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          {/* Search */}
+          <div className="lg:col-span-2">
+            <label className="block text-xs text-gray-600 mb-1">Search</label>
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Name, department, details…"
+              className="w-full border rounded px-3 py-2 text-sm"
+            />
+          </div>
+
+          
+
+          {/* From */}
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">From</label>
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              className="w-full border rounded px-2 py-2 text-sm"
+            />
+          </div>
+
+          {/* To */}
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">To</label>
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              className="w-full border rounded px-2 py-2 text-sm"
+            />
+          </div>
+
+          {/* Sort */}
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Sort</label>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value)}
+              className="w-full border rounded px-2 py-2 text-sm bg-white"
+            >
+              <option value="newest">Newest → Oldest</option>
+              <option value="oldest">Oldest → Newest</option>
+              <option value="nameAsc">Reporter A → Z</option>
+              <option value="nameDesc">Reporter Z → A</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            onClick={resetFilters}
+            className="px-3 py-2 text-sm rounded border hover:bg-gray-50"
+          >
+            Reset
+          </button>
+        </div>
+      </div>
 
       {/* Loading */}
       {loading && (
@@ -340,7 +506,13 @@ const SentReports = () => {
 
       {/* Empty */}
       {!loading && filtered.length === 0 && (
-        <div className="mt-6 text-gray-600">No reports found for your role.</div>
+        <div className="mt-6 text-gray-600 text-center">
+          {scoped.length === 0
+            ? "No reports are currently available."
+            : (q.trim() || dept !== "ALL" || svc !== "ALL" || from || to)
+            ? "No reports matched your filters."
+            : "No reports are currently available."}
+        </div>
       )}
 
       {/* List */}
@@ -349,7 +521,7 @@ const SentReports = () => {
           {filtered.map((r) => (
             <div
               key={r.id}
-              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#0A1936] text-white px-4 py-3 rounded"
+              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#1C1D21] text-white px-4 py-3 rounded"
             >
               <p className="text-sm sm:text-base">
                 <span className="font-semibold">{r.userName}</span> — {r.userDept} —{" "}

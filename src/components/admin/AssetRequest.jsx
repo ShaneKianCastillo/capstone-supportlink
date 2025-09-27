@@ -183,7 +183,7 @@ const AssetRequest = () => {
         <div className="w-full flex">
           <button
             type="submit"
-            className="w-full md:w-2/3 lg:w-1/2 mx-auto bg-[#0A1936] text-white font-semibold py-3 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+            className="w-full md:w-2/3 lg:w-1/2 mx-auto bg-[#494949] text-white font-semibold py-3 rounded disabled:opacity-60 disabled:cursor-not-allowed"
             disabled={loading}
           >
             {loading ? 'Submitting...' : 'Submit Request'}

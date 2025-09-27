@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import logo from "../../assets/logo.png";
+import capstoneLogo from "../../assets/capstoneLogo.png";
 import {
   AlignJustify,
   X,
@@ -13,7 +14,7 @@ import {
   Lock,
   LogOut,
   ChevronDown,
-  BotMessageSquare
+  BotMessageSquare,
 } from "lucide-react";
 
 import ChatSettings from "./ChatSettings";
@@ -25,41 +26,38 @@ import AssetRequest from "./AssetRequest";
 import RequestHistory from "./RequestHistory";
 import ChangePassword from "../user/ChangePassword";
 
-
 import { auth } from "../../config/firebase";
 import { signOut } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "../../config/firebase";
 
-import { doc, onSnapshot } from 'firebase/firestore'
-import { db } from '../../config/firebase'
-
-const SIDEBAR_W = "w-64"; // width class for desktop sidebar
+const SIDEBAR_W = "w-64";
+const HEADER_H = "h-20";
 
 const AdminLayout = ({ setRole }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState("users");
   const [openDropdown, setOpenDropdown] = useState(null);
-
   const [showPwdModal, setShowPwdModal] = useState(false);
-
   const navigate = useNavigate();
 
-  const [profile, setProfile] = useState({ name: '', role: '' })
+  const [profile, setProfile] = useState({ name: "", role: "" });
 
   useEffect(() => {
-    const uid = localStorage.getItem('uid')
-    if (!uid) return
-    const unsub = onSnapshot(doc(db, 'users', uid), snap => {
+    const uid = localStorage.getItem("uid");
+    if (!uid) return;
+    const unsub = onSnapshot(doc(db, "users", uid), (snap) => {
       if (snap.exists()) {
-        const data = snap.data()
+        const data = snap.data();
         setProfile({
-          name: data.name || '',
-          role: data.role || ''
-        })
+          name: data.name || "",
+          role: data.role || "",
+        });
       }
-    })
-    return () => unsub()
-  }, [])
+    });
+    return () => unsub();
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -84,173 +82,238 @@ const AdminLayout = ({ setRole }) => {
 
   const renderContent = () => {
     switch (currentView) {
-      case "users": return <UserManagement />;
-      case "sent": return <SentReports />;
-      case "onprocess": return <OnProcess />;
-      case "resolved": return <ResolvedReports />;
-      case "asset-request": return <AssetRequest />;
-      case "asset-history": return <RequestHistory />;
-      case "password": return <ChangePassword />;
-      case "chat-settings": return <ChatSettings />;   // 👈 add this
-      default: return <UserManagement />;
+      case "users":
+        return <UserManagement />;
+      case "sent":
+        return <SentReports />;
+      case "onprocess":
+        return <OnProcess />;
+      case "resolved":
+        return <ResolvedReports />;
+      case "asset-request":
+        return <AssetRequest />;
+      case "asset-history":
+        return <RequestHistory />;
+      case "password":
+        return <ChangePassword />;
+      case "chat-settings":
+        return <ChatSettings />;
+      default:
+        return <UserManagement />;
     }
   };
+
+  // Pink fill (hover + active persist)
+  const navLinkClass = (active) =>
+    [
+      "relative z-0 block w-full text-left px-4 py-2 rounded-md",
+      "flex items-center gap-2",
+      "text-gray-900 transition-colors duration-200",
+      "hover:text-white",
+      active ? "text-white" : "",
+      "before:content-[''] before:absolute before:inset-0 before:rounded-md",
+      "before:bg-[#eb58b5] before:origin-left before:scale-x-0",
+      "before:transition-transform before:duration-300 before:ease-out",
+      "hover:before:scale-x-100",
+      active ? "before:scale-x-100" : "",
+      "before:-z-10",
+      "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#eb58b5]/40",
+    ].join(" ");
+
+  // Red fill for Logout
+  const logoutLinkClass = [
+    "relative z-0 block w-full text-left px-4 py-2 rounded-md",
+    "flex items-center gap-2 justify-center",
+    "text-red-700 transition-colors duration-200 hover:text-white",
+    "before:content-[''] before:absolute before:inset-0 before:rounded-md",
+    "before:bg-red-600 before:origin-left before:scale-x-0",
+    "before:transition-transform before:duration-300 before:ease-out",
+    "hover:before:scale-x-100 before:-z-10",
+    "focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300",
+  ].join(" ");
 
   return (
     <div className="relative min-h-screen bg-white">
       {/* Sidebar */}
       <aside
         className={`
-          fixed top-0 left-0 h-full ${SIDEBAR_W} bg-[#0A1936] text-white
+          fixed inset-y-0 left-0 ${SIDEBAR_W} bg-[whitesmoke] text-gray-800
           transform transition-transform duration-300 ease-in-out z-50
-          lg:translate-x-0 lg:static lg:block  lg:min-h-[calc(100vh)]
+          h-[100dvh]                 /* <- full dynamic viewport height on mobile */
+          lg:translate-x-0 lg:static lg:block
           ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}
         `}
       >
-        {/* Replace logo with user info */}
-        <div className="p-4 pl-8 border-b border-gray-700 flex justify-between items-center lg:justify-start">
-          <div className="flex flex-col">
-            <h1 className="font-bold text-lg">{profile.name || '—'}</h1>
-            <h2 className="text-sm text-gray-300">{profile.role || '—'}</h2>
+        {/* Right-edge border (stops at header height on lg) */}
+        <div
+          className="pointer-events-none hidden lg:block absolute right-0 w-px bg-gray-200 top-20 bottom-0"
+          style={{ boxShadow: "1px 0 6px rgba(0,0,0,0.06)" }}
+        />
+        {/* Full-height edge for mobile drawer */}
+        <div
+          className="pointer-events-none lg:hidden absolute right-0 top-0 bottom-0 w-px bg-gray-200"
+          style={{ boxShadow: "1px 0 6px rgba(0,0,0,0.08)" }}
+        />
+
+        {/* Full-height column */}
+        <div className="flex h-full flex-col">
+          {/* Top: Logo + close (mobile) */}
+          <div className="flex items-center justify-center relative px-4 pt-4 pb-3 flex-shrink-0">
+            <img src={capstoneLogo} alt="logo" className="h-20 w-auto drop-shadow" />
+            <button
+              onClick={() => setIsSidebarOpen(false)}
+              className="absolute right-3 top-3 text-gray-600 hover:text-gray-800 lg:hidden"
+              aria-label="Close sidebar"
+            >
+              <X size={22} />
+            </button>
           </div>
-          <button
-            onClick={() => setIsSidebarOpen(false)}
-            className="text-white hover:text-gray-300 lg:hidden"
-          >
-            <X size={24} />
-          </button>
-        </div>
 
-        {/* Sidebar Navigation */}
-        <nav className="p-4">
-          <ul className="space-y-2">
-            {/* USERS */}
-            <li>
-              <button
-                onClick={() => navigateTo("users")}
-                className={`block p-2 rounded flex items-center gap-2 hover:bg-blue-500 w-full text-left ${currentView === "users" ? "bg-blue-500" : ""
-                  }`}
-              >
-                <Users /> Users
-              </button>
-            </li>
-
-            {/* REPORT LIST DROPDOWN */}
-            <li>
-              <button
-                onClick={() => toggleDropdown("reports")}
-                className="flex items-center justify-between w-full p-2 rounded hover:bg-blue-500"
-              >
-                <span className="flex items-center gap-2">
-                  <FileText /> Report List
-                </span>
-                <ChevronDown
-                  className={`transform transition-transform duration-300 ${openDropdown === "reports" ? "rotate-180" : ""
-                    }`}
-                />
-              </button>
-              <div
-                className={`transition-all duration-500 ease-in-out overflow-hidden bg-[#0A1936] text-white rounded ml-4 ${openDropdown === "reports" ? "max-h-96 py-2" : "max-h-0 py-0"
-                  }`}
-              >
-                <button
-                  onClick={() => navigateTo("sent")}
-                  className={`block rounded px-4 py-2 w-full text-left hover:bg-blue-500 ${currentView === "sent" ? "bg-blue-500" : ""
-                    }`}
-                >
-                  <Send size={16} className="inline mr-2" /> Sent Reports
-                </button>
-                <button
-                  onClick={() => navigateTo("onprocess")}
-                  className={`block rounded px-4 py-2 w-full text-left hover:bg-blue-500 ${currentView === "onprocess" ? "bg-blue-500" : ""
-                    }`}
-                >
-                  <Clock size={16} className="inline mr-2" /> On Process
-                </button>
-                <button
-                  onClick={() => navigateTo("resolved")}
-                  className={`block rounded px-4 py-2 w-full text-left hover:bg-blue-500 ${currentView === "resolved" ? "bg-blue-500" : ""
-                    }`}
-                >
-                  <CheckCircle size={16} className="inline mr-2" /> Resolved
-                </button>
-              </div>
-            </li>
-
-            {/* CHAT SETTINGS */}
-            {(profile.role === "MIS Admin" || profile.role === "IT Support Specialist") && (
+          {/* Nav (scrolls as needed) */}
+          <nav className="px-4 py-2 flex-1 overflow-y-auto">
+            <ul className="space-y-2">
               <li>
                 <button
-                  onClick={() => navigateTo("chat-settings")}
-                  className={`block p-2 rounded flex items-center gap-2 hover:bg-blue-500 w-full text-left ${currentView === "chat-settings" ? "bg-blue-500" : ""
-                    }`}
+                  onClick={() => navigateTo("users")}
+                  className={navLinkClass(currentView === "users")}
                 >
-                  <BotMessageSquare /> ChatBot Settings
+                  <Users /> <span className="text-lg font-semibold">User</span>
                 </button>
               </li>
-            )}
 
-            {/* ASSET DROPDOWN */}
-            <li>
-              <button
-                onClick={() => toggleDropdown("asset")}
-                className="flex items-center justify-between w-full p-2 rounded hover:bg-blue-500"
-              >
-                <span className="flex items-center gap-2">
-                  <Package /> Asset
-                </span>
-                <ChevronDown
-                  className={`transform transition-transform duration-300 ${openDropdown === "asset" ? "rotate-180" : ""
+              <li>
+                <button
+                  onClick={() => toggleDropdown("reports")}
+                  className={navLinkClass(
+                    currentView === "sent" ||
+                      currentView === "onprocess" ||
+                      currentView === "resolved"
+                  )}
+                >
+                  <FileText />{" "}
+                  <span className="text-lg font-semibold">Reports List</span>
+                  <ChevronDown
+                    className={`ml-auto transform transition-transform duration-300 ${
+                      openDropdown === "reports" ? "rotate-180" : ""
                     }`}
-                />
-              </button>
-              <div
-                className={`transition-all duration-500 ease-in-out overflow-hidden bg-[#0A1936] text-white rounded ml-4 ${openDropdown === "asset" ? "max-h-96 py-2" : "max-h-0 py-0"
+                  />
+                </button>
+
+                <div
+                  className={`transition-all duration-500 ease-in-out overflow-hidden bg-[whitesmoke] rounded ml-4 ${
+                    openDropdown === "reports" ? "max-h-96 py-2" : "max-h-0 py-0"
                   }`}
-              >
-                <button
-                  onClick={() => navigateTo("asset-request")}
-                  className={`block rounded px-4 py-2 w-full text-left hover:bg-blue-500 ${currentView === "asset-request" ? "bg-blue-500" : ""
-                    }`}
                 >
-                  <Send size={16} className="inline mr-2" /> Request Asset
-                </button>
+                  <button
+                    onClick={() => navigateTo("sent")}
+                    className={navLinkClass(currentView === "sent")}
+                  >
+                    <Send size={16} />{" "}
+                    <span className="text-md font-semibold">Sent Reports</span>
+                  </button>
+                  <button
+                    onClick={() => navigateTo("onprocess")}
+                    className={navLinkClass(currentView === "onprocess")}
+                  >
+                    <Clock size={16} />{" "}
+                    <span className="text-md font-semibold">On Process</span>
+                  </button>
+                  <button
+                    onClick={() => navigateTo("resolved")}
+                    className={navLinkClass(currentView === "resolved")}
+                  >
+                    <CheckCircle size={16} />{" "}
+                    <span className="text-md font-semibold">Resolved</span>
+                  </button>
+                </div>
+              </li>
+
+              {(profile.role === "MIS Admin" ||
+                profile.role === "IT Support Specialist") && (
+                <li>
+                  <button
+                    onClick={() => navigateTo("chat-settings")}
+                    className={navLinkClass(currentView === "chat-settings")}
+                  >
+                    <BotMessageSquare />{" "}
+                    <span className="text-lg font-semibold">ChatBot Settings</span>
+                  </button>
+                </li>
+              )}
+
+              <li>
                 <button
-                  onClick={() => navigateTo("asset-history")}
-                  className={`block rounded px-4 py-2 w-full text-left hover:bg-blue-500 ${currentView === "asset-history" ? "bg-blue-500" : ""
-                    }`}
+                  onClick={() => toggleDropdown("asset")}
+                  className={navLinkClass(
+                    currentView === "asset-request" ||
+                      currentView === "asset-history"
+                  )}
                 >
-                  <History size={16} className="inline mr-2" /> Request History
+                  <Package />{" "}
+                  <span className="text-lg font-semibold">Asset</span>
+                  <ChevronDown
+                    className={`ml-auto transform transition-transform duration-300 ${
+                      openDropdown === "asset" ? "rotate-180" : ""
+                    }`}
+                  />
                 </button>
+
+                <div
+                  className={`transition-all duration-500 ease-in-out overflow-hidden bg-[whitesmoke] rounded ml-4 ${
+                    openDropdown === "asset" ? "max-h-96 py-2" : "max-h-0 py-0"
+                  }`}
+                >
+                  <button
+                    onClick={() => navigateTo("asset-request")}
+                    className={navLinkClass(currentView === "asset-request")}
+                  >
+                    <Send size={16} />{" "}
+                    <span className="text-md font-semibold">Request Asset</span>
+                  </button>
+                  <button
+                    onClick={() => navigateTo("asset-history")}
+                    className={navLinkClass(currentView === "asset-history")}
+                  >
+                    <History size={16} />{" "}
+                    <span className="text-md font-semibold">Request History</span>
+                  </button>
+                </div>
+              </li>
+
+              <li>
+                <button
+                  onClick={() => {
+                    setCurrentView("password");
+                    setIsSidebarOpen(false);
+                    setShowPwdModal(true);
+                  }}
+                  className={navLinkClass(currentView === "password")}
+                >
+                  <Lock />{" "}
+                  <span className="text-lg font-semibold">Change Password</span>
+                </button>
+              </li>
+            </ul>
+          </nav>
+
+          {/* Bottom (sticks to bottom, no absolute) */}
+          <div className="px-4 pt-4 pb-6 bg-[whitesmoke] mt-auto">
+            <div className="mx-2 h-[3px] bg-[#eb58b5] rounded-full shadow-sm" />
+            <div className="mt-3 text-center">
+              <div className="text-sm tracking-widest font-extrabold text-gray-900">
+                {profile.name || "—"}
               </div>
-            </li>
-
-            {/* CHANGE PASSWORD */}
-            <li>
-              <button
-                onClick={() => {
-                  setCurrentView("password");     // update header label
-                  setIsSidebarOpen(false);        // close drawer on mobile
-                  setShowPwdModal(true);          // 👈 open the modal
-                }}
-                className={`block p-2 rounded flex items-center gap-2 hover:bg-blue-500 w-full text-left ${currentView === "password" ? "bg-blue-500" : ""
-                  }`}
-              >
-                <Lock /> Change Password
+              <div className="text-xs text-gray-700 font-semibold">
+                {profile.role || "—"}
+              </div>
+            </div>
+            <div className="mt-2">
+              <button onClick={handleLogout} className={logoutLinkClass}>
+                <LogOut /> <span className="text-sm font-semibold">LOGOUT</span>
               </button>
-            </li>
-
-            {/* LOGOUT */}
-            <li>
-              <button
-                onClick={handleLogout}
-                className="block p-2 rounded flex items-center gap-2 hover:bg-blue-500 w-full text-left"
-              >
-                <LogOut /> Logout
-              </button>
-            </li>
-          </ul>
-        </nav>
+            </div>
+          </div>
+        </div>
       </aside>
 
       {/* Overlay for mobile */}
@@ -261,19 +324,23 @@ const AdminLayout = ({ setRole }) => {
         />
       )}
 
-      {/* Header (fixed) */}
-      <header className="fixed top-0 left-0 right-0 bg-[#0A1936] h-20 z-40 lg:ml-64">
+      {/* Header (fixed) — no logo */}
+      <header
+        className={`
+          fixed top-0 left-0 right-0 ${HEADER_H} bg-[whitesmoke] z-40 lg:ml-64
+          border-b border-gray-200 shadow-sm
+        `}
+      >
         <div className="h-full w-full flex items-center justify-between px-4">
-          {/* Toggle only on mobile/tablet */}
           <button
-            className="text-white lg:hidden"
+            className="text-gray-700 lg:hidden"
             onClick={() => setIsSidebarOpen(true)}
             aria-label="Open sidebar"
           >
             <AlignJustify />
           </button>
 
-          <h1 className="text-white text-xl font-semibold">
+          <h1 className="text-gray-900 text-xl lg:text-2xl font-semibold">
             {currentView === "users" && "User Management"}
             {currentView === "sent" && "Sent Reports"}
             {currentView === "onprocess" && "On Process"}
@@ -284,35 +351,23 @@ const AdminLayout = ({ setRole }) => {
             {currentView === "password" && "Change Password"}
           </h1>
 
-          <img src={logo} alt="logo" className="h-10" />
+          <div className="w-6" />
         </div>
       </header>
 
-      {/* Main content: fixed pane beneath header, fills to bottom (no footer here) */}
-      <main
-        className="
-          fixed left-0 right-0 top-20 bottom-0 overflow-auto
-          lg:ml-64
-        "
-      >
+      {/* Main content */}
+      <main className="fixed left-0 right-0 top-20 bottom-0 overflow-auto lg:ml-64">
         <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6">
           {renderContent()}
         </div>
       </main>
 
-      {/* <footer className="fixed bottom-0 left-0 right-0 bg-[#0A1936] h-20 flex items-center justify-center text-white z-30 lg:ml-64">
-        <h1 className="text-base sm:text-lg font-bold">DCT SupportLink</h1>
-      </footer> */}
-
-      {/* Change Password modal from user components */}
+      {/* Password modal */}
       <ChangePassword
         open={showPwdModal}
         setOpen={(next) => {
           setShowPwdModal(next);
-          if (!next && currentView === "password") {
-            // when closing, you can optionally return to Users or keep current view
-            setCurrentView("users");
-          }
+          if (!next && currentView === "password") setCurrentView("users");
         }}
       />
     </div>
