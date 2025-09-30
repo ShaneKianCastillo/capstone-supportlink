@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import logo from "../../assets/logo.png";
+
 import {
   AlignJustify,
   X,
@@ -152,7 +152,7 @@ const CustodianLayout = ({ setRole }) => {
                   onClick={() => navigateTo("request-list")}
                   className={navLinkClass(currentView === "request-list")}
                 >
-                  <Package /> <span className="text-lg font-semibold">Request List</span>
+                  <Package /> <span className="text-lg font-semibold">Requested Asset</span>
                 </button>
               </li>
 
@@ -161,7 +161,7 @@ const CustodianLayout = ({ setRole }) => {
                   onClick={() => navigateTo("request-log")}
                   className={navLinkClass(currentView === "request-log")}
                 >
-                  <History /> <span className="text-lg font-semibold">Request Log</span>
+                  <History /> <span className="text-lg font-semibold">Request History</span>
                 </button>
               </li>
 
@@ -225,8 +225,8 @@ const CustodianLayout = ({ setRole }) => {
           </button>
 
           <h1 className="text-gray-900 text-xl font-semibold lg:text-2xl">
-            {currentView === "request-list" && "Request List"}
-            {currentView === "request-log" && "Request Log"}
+            {currentView === "request-list" && "Request Asset"}
+            {currentView === "request-log" && "Request History"}
             {currentView === "password" && "Change Password"}
           </h1>
 

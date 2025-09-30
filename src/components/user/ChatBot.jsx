@@ -189,7 +189,7 @@ const ChatBot = ({ embedded = false }) => {
             <span className="inline-flex h-7 w-7 rounded-full bg-pink-600 items-center justify-center text-white">
               <BotMessageSquare size={16} />
             </span>
-            <span className="font-medium">IT Self-Help Assistant</span>
+            <span className="font-medium">IT HelpBot</span>
           </div>
           <button
             onClick={clearChat}

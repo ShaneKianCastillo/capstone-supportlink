@@ -574,7 +574,7 @@ const ReportModule = () => {
             flex flex-col
           "
           role="dialog"
-          aria-label="IT Self-Help Assistant"
+          aria-label="IT HelpBot"
         >
           {/* Panel header */}
           <div className="h-12 bg-[#0A1936] text-white px-4 flex items-center justify-between">
@@ -582,7 +582,7 @@ const ReportModule = () => {
               <span className="inline-flex h-7 w-7 rounded-full bg-pink-600 items-center justify-center">
                 <BotMessageSquare size={16} />
               </span>
-              <span className="font-medium text-sm sm:text-base">IT Self-Help Assistant</span>
+              <span className="font-medium text-sm sm:text-base">IT HelpBot</span>
             </div>
             <button
               onClick={() => setOpenChat(false)}

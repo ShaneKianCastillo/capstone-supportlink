@@ -225,7 +225,7 @@ const ReportLog = () => {
     try {
       const result = await Swal.fire({
         title: 'Remove from your log?',
-        text: 'This action will remove this report from your Report Log.',
+        text: 'This action will remove this report from your Report History.',
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: 'Remove',
@@ -260,7 +260,7 @@ const ReportLog = () => {
       Swal.close();
       await Swal.fire({
         title: report.hiddenForAdmin ? 'Deleted' : 'Removed',
-        text: 'The report is successfully removed from your Report Log.',
+        text: 'The report is successfully removed from your Report History.',
         icon: 'success',
         timer: 1400,
         showConfirmButton: false,

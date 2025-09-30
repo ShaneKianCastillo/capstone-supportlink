@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import logo from "../../assets/logo.png";
+
 import capstoneLogo from "../../assets/capstoneLogo.png";
 import {
   AlignJustify,
@@ -191,7 +191,7 @@ const AdminLayout = ({ setRole }) => {
                   )}
                 >
                   <FileText />{" "}
-                  <span className="text-lg font-semibold">Reports List</span>
+                  <span className="text-lg font-semibold">Reported Issues</span>
                   <ChevronDown
                     className={`ml-auto transform transition-transform duration-300 ${
                       openDropdown === "reports" ? "rotate-180" : ""
@@ -236,7 +236,7 @@ const AdminLayout = ({ setRole }) => {
                     className={navLinkClass(currentView === "chat-settings")}
                   >
                     <BotMessageSquare />{" "}
-                    <span className="text-lg font-semibold">ChatBot Settings</span>
+                    <span className="text-lg font-semibold">IT HelpBot Settings</span>
                   </button>
                 </li>
               )}
@@ -347,7 +347,7 @@ const AdminLayout = ({ setRole }) => {
             {currentView === "resolved" && "Resolved Reports"}
             {currentView === "asset-request" && "Asset Request"}
             {currentView === "asset-history" && "Request History"}
-            {currentView === "chat-settings" && "ChatBot Settings"}
+            {currentView === "chat-settings" && "IT HelpBot Settings"}
             {currentView === "password" && "Change Password"}
           </h1>
 

@@ -181,7 +181,7 @@ const RequestList = () => {
 
   return (
     <div className="pb-6">
-      <h1 className="text-2xl sm:text-3xl font-semibold">Request List</h1>
+      <h1 className="text-2xl sm:text-3xl font-semibold">Requested Asset</h1>
 
       {loading && (
         <div className="mt-6 flex items-center justify-center">

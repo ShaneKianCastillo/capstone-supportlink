@@ -138,7 +138,7 @@ const ChatSettings = () => {
           <span className="inline-flex h-9 w-9 rounded-full bg-pink-600 items-center justify-center text-white">
             <BotMessageSquare size={18} />
           </span>
-          <h1 className="text-xl sm:text-2xl font-semibold">ChatBot Settings</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold">IT HelpBot Settings</h1>
         </div>
       </div>
 

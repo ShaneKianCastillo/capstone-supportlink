@@ -101,7 +101,7 @@ const RequestLog = () => {
     try {
       const result = await Swal.fire({
         title: "Delete this request?",
-        text: "This will permanently remove the request from Request Log.",
+        text: "This will permanently remove the request from Request History.",
         icon: "warning",
         showCancelButton: true,
         confirmButtonColor: "#d33",
@@ -187,7 +187,7 @@ const RequestLog = () => {
       {loading && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/30 z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg text-center">
-            <p className="text-lg font-semibold">Loading Request Log...</p>
+            <p className="text-lg font-semibold">Loading Request History...</p>
             <div className="mt-3">
               <div className="animate-spin h-6 w-6 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
             </div>

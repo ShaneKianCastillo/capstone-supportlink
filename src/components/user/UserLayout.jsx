@@ -136,7 +136,7 @@ const UserLayout = ({ setRole }) => {
                   onClick={() => navigateTo('report')}
                   className={navLinkClass('report')}
                 >
-                  <FilePenLine /> <span className='text-lg font-semibold'>Create Report</span>
+                  <FilePenLine /> <span className='text-lg font-semibold'>Report an Issue</span>
                 </button>
               </li>
 
@@ -145,7 +145,7 @@ const UserLayout = ({ setRole }) => {
                   onClick={() => navigateTo('report-log')}
                   className={navLinkClass('report-log')}
                 >
-                  <ScrollText /> <span className='text-lg font-semibold'>Report Log</span>
+                  <ScrollText /> <span className='text-lg font-semibold'>Report History</span>
                 </button>
               </li>
 
