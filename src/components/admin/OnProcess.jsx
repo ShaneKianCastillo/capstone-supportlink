@@ -121,8 +121,8 @@ const OnProcess = () => {
     ts && typeof ts.toDate === "function"
       ? ts.toDate()
       : ts instanceof Date
-      ? ts
-      : null;
+        ? ts
+        : null;
 
   const formatDateTime = (ts) => {
     try {
@@ -283,67 +283,67 @@ const OnProcess = () => {
   };
 
   const handleResolve = async () => {
-  if (!selected?.id || resolving) return;
+    if (!selected?.id || resolving) return;
 
-  // who resolved (staff/admin)
-  const me = usersById[myUid] || {};
-  const resolvedByName = me.name || "—";
-  const resolvedByDept = me.department || "—";
+    // who resolved (staff/admin)
+    const me = usersById[myUid] || {};
+    const resolvedByName = me.name || "—";
+    const resolvedByDept = me.department || "—";
 
-  // who should approve (the original reporter)
-  const reporter = usersById[selected.uid] || {};
-  const reporterName = reporter.name || "User";
-  const reporterUid  = selected.uid || null;
+    // who should approve (the original reporter)
+    const reporter = usersById[selected.uid] || {};
+    const reporterName = reporter.name || "User";
+    const reporterUid = selected.uid || null;
 
-  setResolving(true);
-  try {
-    const resolvedImageUrl = await handleUploadResolution();
+    setResolving(true);
+    try {
+      const resolvedImageUrl = await handleUploadResolution();
 
-    const batch = writeBatch(db);
-    const fromRef = doc(db, "onProcess", selected.id);
-    const toRef   = doc(db, "resolvedReports", selected.id);
+      const batch = writeBatch(db);
+      const fromRef = doc(db, "onProcess", selected.id);
+      const toRef = doc(db, "resolvedReports", selected.id);
 
-    const { id, ...rest } = selected;
+      const { id, ...rest } = selected;
 
-    batch.set(
-      toRef,
-      {
-        ...rest,
-        sourceReportId: id,
+      batch.set(
+        toRef,
+        {
+          ...rest,
+          sourceReportId: id,
 
-        // Existing resolution fields
-        status: "Resolved",
-        resolvedAt: serverTimestamp(),
-        resolutionNotes: (resolutionNotes || "").trim(),
-        resolvedImageUrl: resolvedImageUrl || null,
-        resolvedByUid: myUid || null,
-        resolvedByName,
-        resolvedByDept,
+          // Existing resolution fields
+          status: "Resolved",
+          resolvedAt: serverTimestamp(),
+          resolutionNotes: (resolutionNotes || "").trim(),
+          resolvedImageUrl: resolvedImageUrl || null,
+          resolvedByUid: myUid || null,
+          resolvedByName,
+          resolvedByDept,
 
-        // NEW: user approval flow
-        userApprovalStatus: "pending",         // 'pending' | 'approved' | 'declined'
-        userApprovalPendingForUid: reporterUid,
-        userApprovalPendingForName: reporterName,
-        userApprovalAt: null,                  // will be set when user approves/declines
-        userApprovalNotes: null,               // optional; used on decline
-      },
-      { merge: true }
-    );
+          // NEW: user approval flow
+          userApprovalStatus: "pending",         // 'pending' | 'approved' | 'declined'
+          userApprovalPendingForUid: reporterUid,
+          userApprovalPendingForName: reporterName,
+          userApprovalAt: null,                  // will be set when user approves/declines
+          userApprovalNotes: null,               // optional; used on decline
+        },
+        { merge: true }
+      );
 
-    batch.delete(fromRef);
-    await batch.commit();
+      batch.delete(fromRef);
+      await batch.commit();
 
-    setResolveOpen(false);
-    setOpen(false);
-    setSelected(null);
-    setResolutionImage(null);
-    setResolutionNotes("");
-  } catch (err) {
-    console.error("[OnProcess] handleResolve error:", err);
-  } finally {
-    setResolving(false);
-  }
-};
+      setResolveOpen(false);
+      setOpen(false);
+      setSelected(null);
+      setResolutionImage(null);
+      setResolutionNotes("");
+    } catch (err) {
+      console.error("[OnProcess] handleResolve error:", err);
+    } finally {
+      setResolving(false);
+    }
+  };
 
   return (
     <div className="pb-6">
@@ -434,8 +434,8 @@ const OnProcess = () => {
           {scoped.length === 0
             ? "No reports are currently in process."
             : hasFilters
-            ? "No reports in process matched your filters."
-            : "No reports are currently in process."}
+              ? "No reports in process matched your filters."
+              : "No reports are currently in process."}
         </div>
       )}
 
@@ -445,9 +445,10 @@ const OnProcess = () => {
           {filtered.map((r) => (
             <div
               key={r.id}
-              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#1C1D21] text-white px-4 py-3 rounded"
+              className="flex flex-col sm:flex-row items-center sm:items-center justify-between gap-3 bg-[whitesmoke] border-2 border-[#1C1D21] text-white px-4 py-4 min-h-[64px] rounded"
             >
-              <p className="text-sm sm:text-base">
+
+              <p className="text-sm sm:text-base text-black">
                 <span className="font-semibold">{r.userName}</span> — {r.userDept} —{" "}
                 {formatDateTime(r.processedAt || r.serverTimeStamp)}
               </p>
@@ -455,7 +456,7 @@ const OnProcess = () => {
               <div className="flex items-center gap-4">
                 <button
                   onClick={() => openModal(r)}
-                  className="font-semibold underline underline-offset-4"
+                  className="font-semibold underline underline-offset-4 text-black"
                 >
                   View Report
                 </button>

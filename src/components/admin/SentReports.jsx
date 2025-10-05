@@ -521,9 +521,9 @@ const SentReports = () => {
           {filtered.map((r) => (
             <div
               key={r.id}
-              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#1C1D21] text-white px-4 py-3 rounded"
+              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[whitesmoke] border-2 border-[#1C1D21] text-white px-4 py-3 rounded"
             >
-              <p className="text-sm sm:text-base">
+              <p className="text-sm sm:text-base text-black">
                 <span className="font-semibold">{r.userName}</span> — {r.userDept} —{" "}
                 {formatDateTime(r.serverTimeStamp)}
               </p>
@@ -532,7 +532,7 @@ const SentReports = () => {
                 <span className={badgeForType(r.serviceType)}>{r.serviceType}</span>
                 <button
                   onClick={() => openModal(r)}
-                  className="font-semibold underline underline-offset-4"
+                  className="font-semibold underline underline-offset-4 text-black"
                 >
                   View Report
                 </button>
@@ -540,7 +540,7 @@ const SentReports = () => {
                   title="Forward"
                   onClick={() => handleForward(r)}
                   disabled={forwardingId === r.id}
-                  className={`p-2 rounded transition-colors ${
+                  className={`p-2 rounded transition-colors text-black ${
                     forwardingId === r.id
                       ? "opacity-60 cursor-not-allowed"
                       : "hover:bg-white/10"

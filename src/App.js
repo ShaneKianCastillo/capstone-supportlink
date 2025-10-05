@@ -3,7 +3,11 @@ import { useEffect, useState } from 'react';
 import Login from './components/Login';
 import UserLayout from './components/user/UserLayout';
 import AdminLayout from './components/admin/AdminLayout';
-import CustodianLayout from './components/propertycustodian/CustodianLayout'; // 👈 import your Custodian layout
+import CustodianLayout from './components/propertycustodian/CustodianLayout';
+
+// keep your paths as-is (no /auth folder)
+import ForgotPassword from './components/ForgotPassword';
+import ResetPassword  from './components/ResetPassword';
 
 const adminRoles = [
   'Admin',
@@ -11,13 +15,13 @@ const adminRoles = [
   'CSD Admin',
   'MIS Asst. Admin',
   'CSD Asst. Admin',
-  'IT Support Specialist'
+  'IT Support Specialist',
 ];
 
 const App = () => {
   const [role, setRole] = useState(localStorage.getItem('role'));
   const isAdmin = adminRoles.includes(role || '');
-  const isCustodian = role === 'Property Custodian'; // 👈 check for custodian
+  const isCustodian = role === 'Property Custodian';
 
   // keep state in sync with localStorage
   useEffect(() => {
@@ -29,6 +33,9 @@ const App = () => {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Public login alias (needed for reset redirect) */}
+        <Route path="/login" element={<Login setRole={setRole} />} />
+
         {/* Landing */}
         <Route
           path="/"
@@ -47,15 +54,15 @@ const App = () => {
           }
         />
 
+        {/* 🔐 Password reset flow (public) */}
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+
         {/* Admin area */}
         <Route
           path="/admin/*"
           element={
-            isAdmin ? (
-              <AdminLayout setRole={setRole} />
-            ) : (
-              <Navigate to="/" replace />
-            )
+            isAdmin ? <AdminLayout setRole={setRole} /> : <Navigate to="/" replace />
           }
         />
 

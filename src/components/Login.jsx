@@ -7,58 +7,41 @@ import { User, Lock, Eye, EyeClosed } from 'lucide-react'
 import '../css/login.css' 
 import logo from '../assets/logo.png'
 import { loginSuccessful, loginFailed, incompleteForm } from '../js/login.js'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'   // 👈 add Link
 import Swal from "sweetalert2";
 
 const Login = ({ setRole }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);            // 👈 add loading
+  const [loading, setLoading] = useState(false);
   const Navigate = useNavigate();
 
   const togglePasswordVisibility = () => setShowPassword((s) => !s);
 
-    useEffect(() => {
-  const storedRole = localStorage.getItem('role');
-
-  const adminRoles = [
-    'Admin',
-    'MIS Admin',
-    'CSD Admin',
-    'MIS Asst. Admin',
-    'CSD Asst. Admin',
-    'IT Support Specialist'
-  ];
-
-  if (adminRoles.includes(storedRole)) {
-    Navigate('/admin');
-  } else if (storedRole === 'Property Custodian') {
-    Navigate('/custodian');   // 👈 redirect custodians
-  } else if (storedRole) {
-    Navigate('/user');
-  }
-}, [Navigate]);
-
-
+  useEffect(() => {
+    const storedRole = localStorage.getItem('role');
+    const adminRoles = [
+      'Admin','MIS Admin','CSD Admin','MIS Asst. Admin','CSD Asst. Admin','IT Support Specialist'
+    ];
+    if (adminRoles.includes(storedRole)) {
+      Navigate('/admin');
+    } else if (storedRole === 'Property Custodian') {
+      Navigate('/custodian');
+    } else if (storedRole) {
+      Navigate('/user');
+    }
+  }, [Navigate]);
 
   const signIn = async () => {
-    if (loading) return;                                    // 👈 prevent double submit
-    if (!email || !password) {
-      incompleteForm();
-      return;
-    }
-
+    if (loading) return;
+    if (!email || !password) { incompleteForm(); return; }
     try {
-      setLoading(true);                                     // 👈 start loading
-      // 1) Auth
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+      setLoading(true);
+      const { user } = await signInWithEmailAndPassword(auth, email, password);
       localStorage.setItem("uid", user.uid);
 
-      // 2) Blocked check
-      const blockedRef = doc(db, "blockedUsers", user.uid);
-      const blockedSnap = await getDoc(blockedRef);
+      const blockedSnap = await getDoc(doc(db, "blockedUsers", user.uid));
       if (blockedSnap.exists()) {
         Swal.fire("Blocked!", "Your account has been blocked from DCT SupportLink. Please contact or visit the MIS Office of DCT", "error");
         await auth.signOut();
@@ -66,15 +49,8 @@ const Login = ({ setRole }) => {
         return;
       }
 
-      // 3) User document
-      const userDocRef = doc(db, "users", user.uid);
-      const userDocSnap = await getDoc(userDocRef);
-
-      if (!userDocSnap.exists()) {
-        console.error("No such user document in Firestore!");
-        loginFailed();
-        return;
-      }
+      const userDocSnap = await getDoc(doc(db, "users", user.uid));
+      if (!userDocSnap.exists()) { loginFailed(); return; }
 
       const userData = userDocSnap.data();
       if (userData.disabled) {
@@ -88,20 +64,17 @@ const Login = ({ setRole }) => {
       setRole(userData.role);
 
       loginSuccessful();
-      if (userData.role === "Admin") {
-        Navigate("/admin");
-      } else {
-        Navigate("/user");
-      }
+      if (userData.role === "Admin") Navigate("/admin");
+      else if (userData.role === "Property Custodian") Navigate("/custodian");
+      else Navigate("/user");
     } catch (error) {
       console.error("Error signing in:", error);
       loginFailed();
     } finally {
-      setLoading(false);                                    // 👈 stop loading
+      setLoading(false);
     }
   };
 
-  // Optional: allow Enter key to submit
   const onKeyDown = (e) => {
     if (e.key === 'Enter') signIn();
   };
@@ -110,11 +83,8 @@ const Login = ({ setRole }) => {
     <div className='flex flex-col h-screen w-screen justify-center items-center login-page relative'>
       <img src={logo} alt="" className='h-30 w-40 mb-3'/>
 
-      {/* Email Input */}
-      <div
-        style={{padding: '4px', marginBottom: '10px'}}
-        className='flex flex-row justify-center items-center bg-white border-1 rounded-lg'
-      >
+      {/* Email */}
+      <div style={{padding: '4px', marginBottom: '10px'}} className='flex flex-row justify-center items-center bg-white border-1 rounded-lg'>
         <User />
         <input
           className='w-[280px]'
@@ -128,11 +98,8 @@ const Login = ({ setRole }) => {
         />
       </div>
 
-      {/* Password Input */}
-      <div
-        style={{padding: '4px'}}
-        className='flex flex-row justify-center items-center bg-white border-1 rounded-lg'
-      >
+      {/* Password */}
+      <div style={{padding: '4px'}} className='flex flex-row justify-center items-center bg-white border-1 rounded-lg'>
         <Lock />
         <input
           className='w-64'
@@ -155,7 +122,7 @@ const Login = ({ setRole }) => {
         </button>
       </div>
 
-      {/* Login Button */}
+      {/* Login */}
       <button
         style={{marginTop: '15px', padding: '5px'}}
         className={`border-1 rounded-lg bg-white w-64 h-10 flex justify-center items-center font-semibold
@@ -173,7 +140,16 @@ const Login = ({ setRole }) => {
         )}
       </button>
 
-      
+      {/* Forgot password link */}
+      <div className="mt-3">
+        <Link
+          to="/forgot-password"
+          className="text-md font-medium text-white hover:underline"
+          
+        >
+          Forgot password?
+        </Link>
+      </div>
     </div>
   )
 }
