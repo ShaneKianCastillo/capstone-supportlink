@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Forward, X } from "lucide-react";
+import { Forward, X, User } from "lucide-react";
 import { db } from "../../config/firebase";
 import {
   collection,
@@ -11,6 +11,8 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import Swal from "sweetalert2";
+
+const PAGE_SIZE = 6;
 
 const SentReports = () => {
   // --- service types & office labels
@@ -36,7 +38,6 @@ const SentReports = () => {
   // Viewer modes for modal content
   const VIEW = { FM: "FM", HW: "HW", SW: "SW" };
 
-  // Which field set to show for this viewer (by role). Admin adapts to ticket’s current type.
   const viewModeFor = (role, serviceType) => {
     switch (role) {
       case "CSD Admin":
@@ -58,7 +59,6 @@ const SentReports = () => {
     }
   };
 
-  // Small badge UI
   const badgeForType = (serviceType) => {
     const base =
       "inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold";
@@ -87,18 +87,21 @@ const SentReports = () => {
   const [selected, setSelected] = useState(null);
   const [processing, setProcessing] = useState(false);
 
-  // show per-row forward loading
+  // per-row forward loading
   const [forwardingId, setForwardingId] = useState(null);
 
-  // hold-to-view-full-image state (inside modal)
+  // image preview overlay (for avatar or report image)
+  const [imgPreviewUrl, setImgPreviewUrl] = useState(null);
+  const openPreview = (url) => url && setImgPreviewUrl(url);
+  const closePreview = () => setImgPreviewUrl(null);
+
+  // keep your press-and-hold too (optional)
   const [showImageFull, setShowImageFull] = useState(false);
   const imgTimerRef = useRef(null);
   const holdToOpen = () => {
-    imgTimerRef.current = setTimeout(() => setShowImageFull(true), 500); // 500ms hold
+    imgTimerRef.current = setTimeout(() => setShowImageFull(true), 500);
   };
-  const releaseHold = () => {
-    clearTimeout(imgTimerRef.current);
-  };
+  const releaseHold = () => clearTimeout(imgTimerRef.current);
 
   // role → allowed service types
   const allowedTypesForRole = (role) => {
@@ -111,14 +114,14 @@ const SentReports = () => {
         return ["IT Support Services - Software"];
       case "IT Support Specialist":
         return ["IT Support Services - Hardware"];
-      case "Admin": // super admin sees all
+      case "Admin":
         return [
           "Facilities and Maintenance",
           "IT Support Services - Software",
           "IT Support Services - Hardware",
         ];
       default:
-        return []; // others see none on this admin page
+        return [];
     }
   };
   const allowedTypes = allowedTypesForRole(myRole);
@@ -151,7 +154,7 @@ const SentReports = () => {
         rows.sort((a, b) => {
           const ta = a.serverTimeStamp?.toMillis?.() ?? 0;
           const tb = b.serverTimeStamp?.toMillis?.() ?? 0;
-          return tb - ta;
+          return tb - ta; // newest first
         });
         setReports(rows);
         setLoadingReports(false);
@@ -190,7 +193,7 @@ const SentReports = () => {
     }
   };
 
-  // enrich with user map
+  // combine report with live user info (incl. photo)
   const combined = useMemo(() => {
     return reports.map((r) => {
       const u = usersById[r.uid] || {};
@@ -199,6 +202,7 @@ const SentReports = () => {
         userName: u.name || "—",
         userDept: u.department || "—",
         userRole: u.role || "—",
+        userPhotoUrl: u.photoUrl || "", // 👈 pull avatar from users/{uid}
       };
     });
   }, [reports, usersById]);
@@ -211,36 +215,22 @@ const SentReports = () => {
 
   // ---------------- Filters & Sort State ----------------
   const [q, setQ] = useState(""); // search
-  const [dept, setDept] = useState("ALL");
-  const [svc, setSvc] = useState("ALL");
   const [sort, setSort] = useState("newest"); // newest | oldest | nameAsc | nameDesc
   const [from, setFrom] = useState(""); // yyyy-mm-dd
   const [to, setTo] = useState("");
 
   const resetFilters = () => {
     setQ("");
-    setDept("ALL");
-    setSvc("ALL");
     setSort("newest");
     setFrom("");
     setTo("");
   };
 
-  // Build department options dynamically from visible rows
-  const departmentOptions = useMemo(() => {
-    const set = new Set();
-    scoped.forEach((r) => r.userDept && set.add(r.userDept));
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [scoped]);
-
   // Apply filtering & sorting
   const filtered = useMemo(() => {
     let rows = [...scoped];
 
-    if (svc !== "ALL") rows = rows.filter((r) => (r.serviceType || "") === svc);
-    if (dept !== "ALL") rows = rows.filter((r) => (r.userDept || "") === dept);
-
-    // date range filter (based on serverTimeStamp)
+    // date range filter
     if (from) {
       const fromDate = new Date(from);
       rows = rows.filter((r) => {
@@ -249,12 +239,11 @@ const SentReports = () => {
       });
     }
     if (to) {
-      // include the whole 'to' day by adding 1 day and using <
-      const toDateEdge = new Date(to);
-      toDateEdge.setDate(toDateEdge.getDate() + 1);
+      const toEdge = new Date(to);
+      toEdge.setDate(toEdge.getDate() + 1);
       rows = rows.filter((r) => {
         const d = toDate(r.serverTimeStamp);
-        return d ? d < toDateEdge : false;
+        return d ? d < toEdge : false;
       });
     }
 
@@ -298,10 +287,26 @@ const SentReports = () => {
     });
 
     return rows;
-  }, [scoped, svc, dept, from, to, q, sort]);
+  }, [scoped, from, to, q, sort]);
 
+  // counts
   const totalCount = scoped.length;
   const filteredCount = filtered.length;
+
+  // ---------- Pagination ----------
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(filteredCount / PAGE_SIZE));
+
+  useEffect(() => {
+    setPage(1);
+  }, [q, from, to, sort]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [totalPages, page]);
+
+  const startIdx = (page - 1) * PAGE_SIZE;
+  const pageRows = filtered.slice(startIdx, startIdx + PAGE_SIZE);
 
   const openModal = (report) => {
     setSelected(report);
@@ -315,10 +320,8 @@ const SentReports = () => {
     setProcessing(true);
     try {
       const batch = writeBatch(db);
-
       const fromRef = doc(db, "userReport", report.id);
       const toRef = doc(db, "onProcess", report.id);
-
       const { id, ...rest } = report;
 
       batch.set(
@@ -331,11 +334,8 @@ const SentReports = () => {
         },
         { merge: true }
       );
-
       batch.delete(fromRef);
-
       await batch.commit();
-
       setOpen(false);
       setSelected(null);
     } catch (err) {
@@ -349,7 +349,6 @@ const SentReports = () => {
   const handleForward = async (report) => {
     if (!report?.id) return;
 
-    // radio choices = any service type except the current one
     const choices = SERVICE_TYPES.filter(
       (t) => t !== (report.serviceType || "")
     );
@@ -390,7 +389,6 @@ const SentReports = () => {
 
     try {
       setForwardingId(report.id);
-
       Swal.fire({
         title: "Forwarding...",
         text: "Reassigning the report to the selected office.",
@@ -399,7 +397,6 @@ const SentReports = () => {
         didOpen: () => Swal.showLoading(),
       });
 
-      // Only the serviceType changes; other fields are preserved
       const ref = doc(db, "userReport", report.id);
       await updateDoc(ref, { serviceType: pickedType });
 
@@ -443,8 +440,6 @@ const SentReports = () => {
               className="w-full border rounded px-3 py-2 text-sm"
             />
           </div>
-
-          
 
           {/* From */}
           <div>
@@ -509,50 +504,110 @@ const SentReports = () => {
         <div className="mt-6 text-gray-600 text-center">
           {scoped.length === 0
             ? "No reports are currently available."
-            : (q.trim() || dept !== "ALL" || svc !== "ALL" || from || to)
+            : (q.trim() || from || to)
             ? "No reports matched your filters."
             : "No reports are currently available."}
         </div>
       )}
 
-      {/* List */}
+      {/* List (paged) */}
       {!loading && filtered.length > 0 && (
-        <div className="mt-6 space-y-3">
-          {filtered.map((r) => (
-            <div
-              key={r.id}
-              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[whitesmoke] border-2 border-[#1C1D21] text-white px-4 py-3 rounded"
-            >
-              <p className="text-sm sm:text-base text-black">
-                <span className="font-semibold">{r.userName}</span> — {r.userDept} —{" "}
-                {formatDateTime(r.serverTimeStamp)}
-              </p>
+        <>
+          <div className="mt-6 space-y-3">
+            {pageRows.map((r) => (
+              <div
+                key={r.id}
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[whitesmoke] border-2 border-[#1C1D21] px-4 py-3 rounded"
+              >
+                {/* LEFT: avatar + name line */}
+                <div className="flex items-center gap-3">
+                  {/* Circle avatar (clickable if has photo) */}
+                  <div
+                    className="h-10 w-10 rounded-full overflow-hidden bg-gray-300 flex items-center justify-center shrink-0 cursor-pointer"
+                    onClick={() => r.userPhotoUrl && openPreview(r.userPhotoUrl)}
+                    title={r.userPhotoUrl ? "View reporter photo" : ""}
+                  >
+                    {r.userPhotoUrl ? (
+                      <img
+                        src={r.userPhotoUrl}
+                        alt={`${r.userName || "Reporter"} avatar`}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <User className="text-gray-600" size={20} />
+                    )}
+                  </div>
 
-              <div className="flex items-center gap-3">
-                <span className={badgeForType(r.serviceType)}>{r.serviceType}</span>
-                <button
-                  onClick={() => openModal(r)}
-                  className="font-semibold underline underline-offset-4 text-black"
-                >
-                  View Report
-                </button>
-                <button
-                  title="Forward"
-                  onClick={() => handleForward(r)}
-                  disabled={forwardingId === r.id}
-                  className={`p-2 rounded transition-colors text-black ${
-                    forwardingId === r.id
-                      ? "opacity-60 cursor-not-allowed"
-                      : "hover:bg-white/10"
-                  }`}
-                  aria-label="Forward to the other department"
-                >
-                  <Forward />
-                </button>
+                  <p className="text-sm sm:text-base text-black">
+                    <span className="font-semibold">{r.userName}</span> — {r.userDept} —{" "}
+                    {formatDateTime(r.serverTimeStamp)}
+                  </p>
+                </div>
+
+                {/* RIGHT: type + actions */}
+                <div className="flex items-center gap-3">
+                  <span className={badgeForType(r.serviceType)}>{r.serviceType}</span>
+                  <button
+                    onClick={() => openModal(r)}
+                    className="font-semibold underline underline-offset-4 text-black"
+                  >
+                    View Report
+                  </button>
+                  <button
+                    title="Forward"
+                    onClick={() => handleForward(r)}
+                    disabled={forwardingId === r.id}
+                    className={`p-2 rounded transition-colors text-black ${
+                      forwardingId === r.id
+                        ? "opacity-60 cursor-not-allowed"
+                        : "hover:bg-white/10"
+                    }`}
+                    aria-label="Forward to the other department"
+                  >
+                    <Forward />
+                  </button>
+                </div>
               </div>
+            ))}
+          </div>
+
+          {/* Pagination */}
+          <div className="mt-4 flex flex-wrap justify-center items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className={`px-3 py-1 border rounded transition-colors ${
+                page === 1 ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-200"
+              }`}
+            >
+              Previous
+            </button>
+
+            <div className="flex items-center gap-2">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className={`px-3 py-1 border rounded transition-colors ${
+                    p === page ? "bg-blue-500 text-white" : "hover:bg-gray-200"
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
             </div>
-          ))}
-        </div>
+
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className={`px-3 py-1 border rounded transition-colors ${
+                page === totalPages ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-200"
+              }`}
+            >
+              Next
+            </button>
+          </div>
+        </>
       )}
 
       {/* Modal */}
@@ -587,7 +642,7 @@ const SentReports = () => {
               {selected.userDept} • {formatDateTime(selected.serverTimeStamp)}
             </div>
 
-            {/* Image – press & hold to view full */}
+            {/* Image – press & hold or click to view full */}
             {selected.imageUrl && (
               <div className="mb-4 rounded overflow-hidden border">
                 <img
@@ -599,6 +654,7 @@ const SentReports = () => {
                   onMouseLeave={releaseHold}
                   onTouchStart={holdToOpen}
                   onTouchEnd={releaseHold}
+                  onClick={() => openPreview(selected.imageUrl)}
                 />
               </div>
             )}
@@ -606,19 +662,14 @@ const SentReports = () => {
             {/* Fields (role-adaptive) */}
             {(() => {
               const mode = viewModeFor(myRole, selected.serviceType);
-
-              // common fields (always show)
               const common = (
-                <>
-                  <div>
-                    <span className="font-semibold">Other Details:</span>{" "}
-                    {selected.additionalDetails || "—"}
-                  </div>
-                </>
+                <div>
+                  <span className="font-semibold">Other Details:</span>{" "}
+                  {selected.additionalDetails || "—"}
+                </div>
               );
 
               if (mode === VIEW.SW) {
-                // Software office view: show platform/system only (plus common)
                 const platform =
                   selected.platformName ||
                   selected.systemName ||
@@ -635,7 +686,6 @@ const SentReports = () => {
                 );
               }
 
-              // Hardware or Facilities office view: show building & floor (plus common)
               return (
                 <div className="space-y-2 text-sm">
                   <div>
@@ -670,7 +720,7 @@ const SentReports = () => {
             }
           `}</style>
 
-          {/* Full image overlay */}
+          {/* Optional: long-press full image overlay */}
           {showImageFull && selected?.imageUrl && (
             <div
               className="fixed inset-0 bg-black/80 flex justify-center items-center z-[60]"
@@ -683,6 +733,20 @@ const SentReports = () => {
               />
             </div>
           )}
+        </div>
+      )}
+
+      {/* Full-screen image preview overlay (avatar or report image) */}
+      {imgPreviewUrl && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center"
+          onClick={closePreview}
+        >
+          <img
+            src={imgPreviewUrl}
+            alt="Preview"
+            className="max-h-[90%] max-w-[90%] rounded shadow-2xl"
+          />
         </div>
       )}
     </div>

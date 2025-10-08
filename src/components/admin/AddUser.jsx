@@ -2,8 +2,24 @@ import React, { useState } from "react";
 import { Eye, EyeClosed, X } from "lucide-react";
 import { auth, db } from "../../config/firebase";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import {passNotMatched, accountCreated} from '../../js/login.js';
+import {
+  doc,
+  setDoc,
+  serverTimestamp,
+  collection,
+  query,
+  where,
+  getDocs,
+  limit,
+} from "firebase/firestore";
+import { passNotMatched, accountCreated } from "../../js/login.js";
+import Swal from "sweetalert2";
+
+const UNIQUE_ROLES = [
+  "IT Support Specialist",
+  "CSD Admin",
+  "Property Custodian",
+];
 
 const AddUser = ({ open, setOpen }) => {
   const [showPassword, setShowPassword] = useState(false);
@@ -16,10 +32,10 @@ const AddUser = ({ open, setOpen }) => {
   const [department, setDepartment] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  
 
   const togglePasswordVisibility = () => setShowPassword(!showPassword);
-  const toggleConfirmPasswordVisibility = () => setShowConfirmPassword(!showConfirmPassword);
+  const toggleConfirmPasswordVisibility = () =>
+    setShowConfirmPassword(!showConfirmPassword);
 
   if (!open) return null;
 
@@ -32,30 +48,57 @@ const AddUser = ({ open, setOpen }) => {
     }
 
     try {
+      // 🔎 Uniqueness check BEFORE creating the Auth user
+      if (UNIQUE_ROLES.includes(role)) {
+        const q = query(
+          collection(db, "users"),
+          where("role", "==", role),
+          limit(1)
+        );
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          await Swal.fire({
+            icon: "error",
+            title: "Role already assigned",
+            text:
+              `There is already a user with the role "${role}". ` +
+              `Only one account is allowed for this role. ` +
+              `MIS Admins can be duplicated for handover, but not ${role}.`,
+            confirmButtonColor: "#111827",
+          });
+          return;
+        }
+      }
+
       // 1️⃣ Create user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(
         auth,
-        email,
+        email.trim(),
         password
       );
-
       const user = userCredential.user;
 
       // 2️⃣ Store user info in Firestore
       await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
-        email: email,
-        name: name,
-        role: role,
-        department: department,
+        email: email.trim(),
+        name: name.trim(),
+        role,
+        department: department.trim(),
         createdAt: serverTimestamp(),
+        disabled: false,
       });
 
       accountCreated();
       setOpen(false);
     } catch (error) {
       console.error("Error signing up:", error);
-      alert(error.message);
+      await Swal.fire({
+        icon: "error",
+        title: "Unable to create account",
+        text: error?.message || "Please try again.",
+        confirmButtonColor: "#111827",
+      });
     }
   };
 
@@ -76,6 +119,7 @@ const AddUser = ({ open, setOpen }) => {
         <button
           onClick={() => setOpen(false)}
           className="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
+          aria-label="Close"
         >
           <X size={20} />
         </button>
@@ -96,6 +140,7 @@ const AddUser = ({ open, setOpen }) => {
             className="border-black border p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
             required
           />
+
           {/* Role (Dropdown) */}
           <select
             value={role}
@@ -103,7 +148,9 @@ const AddUser = ({ open, setOpen }) => {
             className="border-black border p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
             required
           >
-            <option value="" disabled>Select a role</option>
+            <option value="" disabled>
+              Select a role
+            </option>
             <option value="User">User</option>
             <option value="MIS Admin">MIS Admin</option>
             <option value="CSD Admin">CSD Admin</option>
@@ -112,6 +159,7 @@ const AddUser = ({ open, setOpen }) => {
             <option value="Property Custodian">Property Custodian</option>
             <option value="IT Support Specialist">IT Support Specialist</option>
           </select>
+
           <input
             onChange={(e) => setDepartment(e.target.value)}
             type="text"
@@ -120,7 +168,7 @@ const AddUser = ({ open, setOpen }) => {
             required
           />
 
-          {/* Password Input */}
+          {/* Password */}
           <div className="flex items-center border-black border p-2 rounded-lg focus-within:ring-2 focus-within:ring-blue-400">
             <input
               onChange={(e) => setPassword(e.target.value)}
@@ -128,17 +176,19 @@ const AddUser = ({ open, setOpen }) => {
               placeholder="Password"
               className="flex-1 outline-none"
               required
+              minLength={6}
             />
             <button
               type="button"
               onClick={togglePasswordVisibility}
               className="focus:outline-none ml-2"
+              aria-label={showPassword ? "Hide password" : "Show password"}
             >
               {showPassword ? <EyeClosed size={18} /> : <Eye size={18} />}
             </button>
           </div>
 
-          {/* Confirm Password Input */}
+          {/* Confirm Password */}
           <div className="flex items-center border-black border p-2 rounded-lg focus-within:ring-2 focus-within:ring-blue-400">
             <input
               onChange={(e) => setConfirmPassword(e.target.value)}
@@ -146,17 +196,15 @@ const AddUser = ({ open, setOpen }) => {
               placeholder="Confirm Password"
               className="flex-1 outline-none"
               required
+              minLength={6}
             />
             <button
               type="button"
               onClick={toggleConfirmPasswordVisibility}
               className="focus:outline-none ml-2"
+              aria-label={showConfirmPassword ? "Hide password" : "Show password"}
             >
-              {showConfirmPassword ? (
-                <EyeClosed size={18} />
-              ) : (
-                <Eye size={18} />
-              )}
+              {showConfirmPassword ? <EyeClosed size={18} /> : <Eye size={18} />}
             </button>
           </div>
 
@@ -180,20 +228,12 @@ const AddUser = ({ open, setOpen }) => {
       </div>
 
       {/* Slide animation */}
-      <style>
-        {`
-          @keyframes slideIn {
-            from {
-              opacity: 0;
-              transform: translateY(-50px);
-            }
-            to {
-              opacity: 1;
-              transform: translateY(0);
-            }
-          }
-        `}
-      </style>
+      <style>{`
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateY(-50px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 };

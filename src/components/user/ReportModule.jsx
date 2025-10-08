@@ -1,6 +1,6 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { db } from '../../config/firebase';
-import { collection, serverTimestamp, addDoc } from 'firebase/firestore';
+import { collection, serverTimestamp, addDoc, doc, getDoc } from 'firebase/firestore';
 import { incompleteForm, reportSubmitted } from '../../js/login.js';
 import axios from 'axios';
 import ChatBot from './ChatBot';
@@ -42,6 +42,26 @@ const ReportModule = () => {
   // Help modal
   const [showHelp, setShowHelp] = useState(false);
 
+  // 🔹 reporter photo url (read from users/{uid})
+  const [reporterPhotoUrl, setReporterPhotoUrl] = useState('');
+
+  useEffect(() => {
+    const uid = localStorage.getItem('uid');
+    if (!uid) return;
+
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'users', uid));
+        if (snap.exists()) {
+          const data = snap.data();
+          setReporterPhotoUrl(data?.photoUrl || '');
+        }
+      } catch (e) {
+        console.error('Failed to load user profile for report payload:', e);
+      }
+    })();
+  }, []);
+
   const resetAllFields = () => {
     setBuildingName('');
     setFloorLocation('');
@@ -55,15 +75,15 @@ const ReportModule = () => {
     setServiceType(type);
     resetAllFields();
   };
+
   const BUILDINGS = [
-    { value: "SD", label: "SD - St. Dominic BLDG" },
-    { value: "HR", label: "HR - Holy Rosary BLDG" },
+    { value: "SD",  label: "SD - St. Dominic BLDG" },
+    { value: "HR",  label: "HR - Holy Rosary BLDG" },
     { value: "OLP", label: "OLP - Our Lady of Peace BLDG" },
     { value: "SLR", label: "SLR - San Lorenzo BLDG" },
     { value: "OLF", label: "OLF - Our Lady of Fatima BLDG" },
     { value: "SCS", label: "SCS - St. Catherine of Siena BLDG" },
   ];
-
 
   const handleBackToChooser = () => {
     setServiceType('');
@@ -103,27 +123,28 @@ const ReportModule = () => {
         return;
       }
 
+      // Base report fields (include reporterPhotoUrl here)
+      const base = {
+        serverTimeStamp: serverTimestamp(),
+        serviceType,
+        additionalDetails: additionalDetails.trim(),
+        imageUrl: img,
+        uid,
+        status: 'Pending',
+        reporterPhotoUrl: reporterPhotoUrl || '', // 👈 attach user's profile photo URL
+      };
+
       const payload =
         serviceType === SERVICE.IT_SW
           ? {
-            serverTimeStamp: serverTimestamp(),
-            serviceType,
-            platformName: platformName.trim(),
-            additionalDetails: additionalDetails.trim(),
-            imageUrl: img,
-            uid,
-            status: 'Pending',
-          }
+              ...base,
+              platformName: platformName.trim(),
+            }
           : {
-            serverTimeStamp: serverTimestamp(),
-            serviceType,
-            buildingName: buildingName.trim(),
-            floorLocation: floorLocation.trim(),
-            additionalDetails: additionalDetails.trim(),
-            imageUrl: img,
-            uid,
-            status: 'Pending',
-          };
+              ...base,
+              buildingName: buildingName.trim(),
+              floorLocation: floorLocation.trim(),
+            };
 
       await addDoc(reportCollectionRef, payload);
 
@@ -221,8 +242,6 @@ const ReportModule = () => {
           </div>
         )}
       </div>
-      {/* Note: file inputs can’t be “required” the usual way when hidden.
-          We enforce image requirement in onSubmitReport. */}
       <div className="text-[11px] text-gray-500">Image is required.</div>
     </div>
   );
@@ -380,7 +399,6 @@ const ReportModule = () => {
           ) : (
             <>
               {/* BUILDING NAME (required) */}
-              {/* BUILDING NAME (required) */}
               <div>
                 <label className="block text-sm font-semibold mb-1">
                   BUILDING NAME<span className="text-red-500">*</span>
@@ -400,7 +418,6 @@ const ReportModule = () => {
                 </select>
               </div>
 
-
               {/* FLOOR LOCATION (required) */}
               <div>
                 <label className="block text-sm font-semibold mb-1">
@@ -416,7 +433,7 @@ const ReportModule = () => {
                 />
               </div>
 
-              {/* IMAGE PICKER (same UI, required via submit check) */}
+              {/* IMAGE PICKER */}
               <ImagePicker />
 
               {/* FULL IMAGE MODAL */}
@@ -443,8 +460,9 @@ const ReportModule = () => {
                   onChange={(e) => setAdditionalDetails(e.target.value)}
                   rows="3"
                   className="w-full border border-black rounded px-3 py-2 text-sm bg-gray-100"
-                  placeholder={`Describe the issue (e.g., for ${serviceType === SERVICE.FM ? 'lighting/aircon/leak' : 'PC/peripherals/projector/network'
-                    })…`}
+                  placeholder={`Describe the issue (e.g., for ${
+                    serviceType === SERVICE.FM ? 'lighting/aircon/leak' : 'PC/peripherals/projector/network'
+                  })…`}
                   required
                 ></textarea>
               </div>

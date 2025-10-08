@@ -1,3 +1,4 @@
+// src/components/ReportLog.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { ArrowDown } from 'lucide-react';
 import { db } from '../../config/firebase';
@@ -14,15 +15,17 @@ import {
 } from 'firebase/firestore';
 import Swal from 'sweetalert2';
 
+const PAGE_SIZE = 6;
+
 const ReportLog = () => {
   const [isOpen, setIsOpen] = useState(null);
-  const [allReports, setAllReports] = useState([]); // merged raw list
-  const [hiddenSet, setHiddenSet] = useState(new Set()); // reportIds hidden by this user (resolved only)
+  const [allReports, setAllReports] = useState([]);
+  const [hiddenSet, setHiddenSet] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // status filter: 'All' | 'Pending' | 'On Process' | 'Resolved'
   const [statusFilter, setStatusFilter] = useState('All');
+  const [page, setPage] = useState(1);
 
   const userReportRef = collection(db, 'userReport');
   const onProcessRef = collection(db, 'onProcess');
@@ -30,7 +33,6 @@ const ReportLog = () => {
 
   const uid = (localStorage.getItem('uid') || '').trim();
 
-  // image preview modal (for both original & resolution thumbnails)
   const [imgPreviewUrl, setImgPreviewUrl] = useState(null);
   const openPreview = (url) => url && setImgPreviewUrl(url);
   const closePreview = () => setImgPreviewUrl(null);
@@ -38,9 +40,8 @@ const ReportLog = () => {
   // ---------- EDIT MODAL STATE ----------
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [editReport, setEditReport] = useState(null); // original pending report being edited
+  const [editReport, setEditReport] = useState(null);
 
-  // form fields
   const SERVICE_TYPES = [
     'Facilities and Maintenance',
     'IT Support Services - Hardware',
@@ -51,19 +52,19 @@ const ReportLog = () => {
   const [floorLocation, setFloorLocation] = useState('');
   const [platformName, setPlatformName] = useState('');
   const [additionalDetails, setAdditionalDetails] = useState('');
-  const [currentImageUrl, setCurrentImageUrl] = useState(''); // existing image in DB
-  const [newImageFile, setNewImageFile] = useState(null);     // newly chosen file (if any)
+  const [currentImageUrl, setCurrentImageUrl] = useState('');
+  const [newImageFile, setNewImageFile] = useState(null);
 
-  // hidden file inputs for upload/take
   const fileInputId = 'edit-file-upload';
   const cameraInputId = 'edit-file-camera';
 
-  // ---- helpers ----
   const formatDateTime = (ts) => {
     try {
       const d =
-        ts && typeof ts.toDate === 'function' ? ts.toDate()
-          : ts instanceof Date ? ts
+        ts && typeof ts.toDate === 'function'
+          ? ts.toDate()
+          : ts instanceof Date
+            ? ts
             : null;
       if (!d) return '—';
       return d.toLocaleString(undefined, {
@@ -78,34 +79,28 @@ const ReportLog = () => {
     }
   };
 
-  // original submission timestamp (for header display)
   const submittedAt = (r) =>
     r?.serverTimeStamp?.toDate?.() ??
     (r?.serverTimeStamp instanceof Date ? r.serverTimeStamp : null);
 
   const StatusChip = ({ status, approval }) => {
-    const s = (status || '').toLowerCase();              // 'pending' | 'on process' | 'resolved'
-    const a = (approval || 'pending').toLowerCase();     // 'pending' | 'approved' | 'declined'
+    const s = (status || '').toLowerCase();
+    const a = (approval || 'pending').toLowerCase();
 
     if (s === 'resolved') {
       if (a === 'approved')
         return <span className="bg-green-600 text-white text-xs px-2 py-1 rounded">Resolved (Approved)</span>;
       if (a === 'declined')
         return <span className="bg-red-600 text-white text-xs px-2 py-1 rounded">Not Resolved</span>;
-      // pending
       return <span className="bg-yellow-500 text-white text-xs px-2 py-1 rounded">Resolved (Pending Your Approval)</span>;
     }
-
     if (s === 'on process')
       return <span className="bg-yellow-500 text-white text-xs px-2 py-1 rounded">On Process</span>;
-
     if (s === 'pending')
       return <span className="bg-gray-500 text-white text-xs px-2 py-1 rounded">Pending</span>;
-
     return <span className="bg-slate-500 text-white text-xs px-2 py-1 rounded">{status || '—'}</span>;
   };
 
-  // Load per-user hidden resolved IDs
   useEffect(() => {
     const loadHides = async () => {
       try {
@@ -113,7 +108,7 @@ const ReportLog = () => {
         const snap = await getDocs(
           query(collection(db, 'userResolvedHides'), where('uid', '==', uid))
         );
-        const ids = new Set(snap.docs.map(d => d.data().reportId));
+        const ids = new Set(snap.docs.map((d) => d.data().reportId));
         setHiddenSet(ids);
       } catch (e) {
         console.error('[ReportLog] load hides error:', e);
@@ -122,7 +117,6 @@ const ReportLog = () => {
     loadHides();
   }, [uid]);
 
-  // Load reports from all three collections (for this user)
   useEffect(() => {
     const MIN_SPINNER_MS = 500;
     const start = Date.now();
@@ -145,20 +139,20 @@ const ReportLog = () => {
           getDocs(query(resolvedReportsRef, where('uid', '==', uid))),
         ]);
 
-        const rowsUserReport = snapUserReport.docs.map(d => ({
+        const rowsUserReport = snapUserReport.docs.map((d) => ({
           id: d.id,
           ...d.data(),
-          _collection: 'userReport', // Pending
+          _collection: 'userReport',
         }));
-        const rowsOnProcess = snapOnProcess.docs.map(d => ({
+        const rowsOnProcess = snapOnProcess.docs.map((d) => ({
           id: d.id,
           ...d.data(),
-          _collection: 'onProcess', // On Process
+          _collection: 'onProcess',
         }));
-        const rowsResolved = snapResolved.docs.map(d => ({
+        const rowsResolved = snapResolved.docs.map((d) => ({
           id: d.id,
           ...d.data(),
-          _collection: 'resolvedReports', // Resolved
+          _collection: 'resolvedReports',
         }));
 
         const merged = [...rowsUserReport, ...rowsOnProcess, ...rowsResolved];
@@ -166,12 +160,14 @@ const ReportLog = () => {
           const ta =
             a.resolvedAt?.toMillis?.() ??
             a.processedAt?.toMillis?.() ??
-            a.serverTimeStamp?.toMillis?.() ?? 0;
+            a.serverTimeStamp?.toMillis?.() ??
+            0;
           const tb =
             b.resolvedAt?.toMillis?.() ??
             b.processedAt?.toMillis?.() ??
-            b.serverTimeStamp?.toMillis?.() ?? 0;
-          return tb - ta; // newest first
+            b.serverTimeStamp?.toMillis?.() ??
+            0;
+          return tb - ta;
         });
 
         setAllReports(merged);
@@ -187,19 +183,19 @@ const ReportLog = () => {
     load();
   }, [uid]);
 
-  // Visible list = hide resolved items this user chose to hide
   const reportList = useMemo(() => {
     if (!hiddenSet.size) return allReports;
-    return allReports.filter(r => {
+    return allReports.filter((r) => {
       const status = (r.status || '').toLowerCase();
       if (status !== 'resolved') return true;
       return !hiddenSet.has(r.id);
     });
   }, [allReports, hiddenSet]);
 
-  // Counts (visible items only)
   const counts = useMemo(() => {
-    let pending = 0, onproc = 0, resolved = 0;
+    let pending = 0,
+      onproc = 0,
+      resolved = 0;
     for (const r of reportList) {
       const s = (r.status || '').toLowerCase();
       if (s === 'pending') pending++;
@@ -212,10 +208,21 @@ const ReportLog = () => {
   const filteredList = useMemo(() => {
     if (statusFilter === 'All') return reportList;
     const wanted = statusFilter.toLowerCase();
-    return reportList.filter(r => (r.status || '').toLowerCase() === wanted);
+    return reportList.filter((r) => (r.status || '').toLowerCase() === wanted);
   }, [statusFilter, reportList]);
 
-  // Hide a resolved report for THIS user only
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, reportList.length]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredList.length / PAGE_SIZE));
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  const startIdx = (page - 1) * PAGE_SIZE;
+  const pageItems = filteredList.slice(startIdx, startIdx + PAGE_SIZE);
+
   const removeFromMyLog = async (report) => {
     const isResolved = (report.status || '').toLowerCase() === 'resolved';
     if (!isResolved) {
@@ -248,14 +255,12 @@ const ReportLog = () => {
       const hideId = `${uid}_${report.id}`;
       const hideRef = doc(db, 'userResolvedHides', hideId);
 
-      // Always write the user hide marker
       await setDoc(hideRef, {
         uid,
         reportId: report.id,
         createdAt: serverTimestamp(),
       });
 
-      // If admin already hid it, now both removed -> HARD DELETE
       if (report.hiddenForAdmin) {
         await deleteDoc(doc(db, 'resolvedReports', report.id));
       }
@@ -269,8 +274,7 @@ const ReportLog = () => {
         showConfirmButton: false,
       });
 
-      // Update local UI immediately
-      setHiddenSet(prev => {
+      setHiddenSet((prev) => {
         const next = new Set(prev);
         next.add(report.id);
         return next;
@@ -286,7 +290,6 @@ const ReportLog = () => {
     }
   };
 
-  // ---------- EDIT HANDLERS ----------
   const openEdit = (report) => {
     setEditReport(report);
     setSvcType(report.serviceType || '');
@@ -308,12 +311,9 @@ const ReportLog = () => {
 
   const validateEdit = () => {
     if (!svcType) return 'Please choose a service type.';
-    const type = svcType;
-    const isSW = type === 'IT Support Services - Software';
+    const isSW = svcType === 'IT Support Services - Software';
     const hasImg = !!(newImageFile || currentImageUrl);
-
     if (!hasImg) return 'Please attach an image.';
-
     if (isSW) {
       if (!platformName.trim()) return 'Please enter the Platform / System Name.';
     } else {
@@ -326,7 +326,7 @@ const ReportLog = () => {
   const uploadToCloudinary = async (file) => {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('upload_preset', 'supportlink'); // same preset you used
+    formData.append('upload_preset', 'supportlink');
     try {
       const res = await fetch('https://api.cloudinary.com/v1_1/dsycysb0e/image/upload', {
         method: 'POST',
@@ -358,7 +358,6 @@ const ReportLog = () => {
         didOpen: () => Swal.showLoading(),
       });
 
-      // image: use new if provided
       let finalImageUrl = currentImageUrl;
       if (newImageFile) {
         const uploaded = await uploadToCloudinary(newImageFile);
@@ -382,17 +381,14 @@ const ReportLog = () => {
 
       if (isSW) {
         updatePayload.platformName = platformName || '';
-        // clear FM/HW fields
         updatePayload.buildingName = null;
         updatePayload.floorLocation = null;
       } else {
         updatePayload.buildingName = buildingName || '';
         updatePayload.floorLocation = floorLocation || '';
-        // clear SW field
         updatePayload.platformName = null;
       }
 
-      // Only editable if it's still in 'userReport'
       await updateDoc(doc(db, 'userReport', editReport.id), updatePayload);
 
       Swal.close();
@@ -406,12 +402,9 @@ const ReportLog = () => {
 
       closeEdit();
 
-      // Refresh list in-place (optional: re-fetch; here we mutate local)
-      setAllReports(prev =>
-        prev.map(r =>
-          r._collection === 'userReport' && r.id === editReport.id
-            ? { ...r, ...updatePayload }
-            : r
+      setAllReports((prev) =>
+        prev.map((r) =>
+          r._collection === 'userReport' && r.id === editReport.id ? { ...r, ...updatePayload } : r
         )
       );
     } catch (e) {
@@ -423,7 +416,7 @@ const ReportLog = () => {
     }
   };
 
-  // ---- USER APPROVAL ACTIONS (Resolved items) ----
+  // USER APPROVAL (Resolved)
   const approveResolution = async (report) => {
     try {
       if (uid !== report.uid) {
@@ -453,9 +446,8 @@ const ReportLog = () => {
 
       await Swal.fire('Approved', 'Thanks for confirming the fix.', 'success');
 
-      // Optimistic UI update
-      setAllReports(prev =>
-        prev.map(r =>
+      setAllReports((prev) =>
+        prev.map((r) =>
           r._collection === 'resolvedReports' && r.id === report.id
             ? { ...r, userApprovalStatus: 'approved' }
             : r
@@ -498,11 +490,14 @@ const ReportLog = () => {
 
       await Swal.fire('Noted', 'We marked this as not resolved. A staff member will review.', 'success');
 
-      // Optimistic UI update
-      setAllReports(prev =>
-        prev.map(r =>
+      setAllReports((prev) =>
+        prev.map((r) =>
           r._collection === 'resolvedReports' && r.id === report.id
-            ? { ...r, userApprovalStatus: 'declined', userApprovalNotes: (reason || '').trim() || null }
+            ? {
+              ...r,
+              userApprovalStatus: 'declined',
+              userApprovalNotes: (reason || '').trim() || null,
+            }
             : r
         )
       );
@@ -526,213 +521,248 @@ const ReportLog = () => {
         </div>
       )}
 
-      {/* Outer container */}
-      <div className="mx-auto w-full max-w-lg sm:max-w-xl md:max-w-2xl lg:max-w-3xl xl-max-w-4xl px-4 sm:px-6 lg:px-8 py-6 ">
-
-        {/* Controls: Filter + counts */}
-        <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <label htmlFor="statusFilter" className="text-sm font-semibold">Filter by status:</label>
-            <select
-              id="statusFilter"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="border border-black rounded px-2 py-1 text-sm"
-            >
-              <option>All</option>
-              <option>Pending</option>
-              <option>On Process</option>
-              <option>Resolved</option>
-            </select>
-          </div>
-
-          <div className="flex flex-wrap gap-2 text-xs">
-            <span className="px-2 py-1 border border-black rounded">All: {counts.all}</span>
-            <span className="px-2 py-1 border border-black rounded">Pending: {counts.pending}</span>
-            <span className="px-2 py-1 border border-black rounded">On Process: {counts.onproc}</span>
-            <span className="px-2 py-1 border border-black rounded">Resolved: {counts.resolved}</span>
-          </div>
+      {/* Controls: Filter + counts */}
+      <div className="mb-4 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+        <div className="flex items-center gap-2">
+          <label htmlFor="statusFilter" className="text-sm font-semibold">Filter by status:</label>
+          <select
+            id="statusFilter"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="border border-black rounded px-2 py-1 text-sm"
+          >
+            <option>All</option>
+            <option>Pending</option>
+            <option>On Process</option>
+            <option>Resolved</option>
+          </select>
         </div>
 
-        {/* Error */}
-        {!loading && error && (
-          <div className="text-sm text-red-600 my-6">{error}</div>
-        )}
+        <div className="flex flex-wrap gap-2 text-xs">
+          <span className="px-2 py-1 border border-black rounded">All: {counts.all}</span>
+          <span className="px-2 py-1 border border-black rounded">Pending: {counts.pending}</span>
+          <span className="px-2 py-1 border border-black rounded">On Process: {counts.onproc}</span>
+          <span className="px-2 py-1 border border-black rounded">Resolved: {counts.resolved}</span>
+        </div>
+      </div>
 
-        {/* Empty */}
-        {!loading && !error && filteredList.length === 0 && (
-          <div className="text-sm text-gray-500 my-6">No reports found for this status.</div>
-        )}
+      {/* Error */}
+      {!loading && error && (
+        <div className="text-sm text-red-600 my-6">{error}</div>
+      )}
 
-        {/* List (scrollable container) */}
-        {!loading && !error && filteredList.length > 0 && (
-          <div className="rounded-lg border bg-white">
-            <div className="max-h-[65vh] overflow-y-auto px-0 py-3">
-              {filteredList.map((report, index) => {
-                const isResolved = (report.status || '').toLowerCase() === 'resolved';
-                const isPending  = (report.status || '').toLowerCase() === 'pending';
-                const isEditable = isPending && report._collection === 'userReport';
+      {/* Empty */}
+      {!loading && !error && filteredList.length === 0 && (
+        <div className="text-sm text-gray-500 my-6">No reports found for this status.</div>
+      )}
 
-                const submittedDate = submittedAt(report);
-                const submittedText = submittedDate ? formatDateTime(submittedDate) : '—';
+      {/* Card list */}
+      {!loading && !error && filteredList.length > 0 && (
+        <div className="rounded-lg border bg-white px-0 py-3">
+          {pageItems.map((report, index) => {
+            const globalIndex = startIdx + index;
+            const isResolved = (report.status || '').toLowerCase() === 'resolved';
+            const isPending = (report.status || '').toLowerCase() === 'pending';
+            const isEditable = isPending && report._collection === 'userReport';
 
-                return (
-                  <div key={`${report._collection}:${report.id}`} className="w-full rounded overflow-hidden mb-4 px-2">
-                    {/* Header */}
-                    <div
-                      className="h-[54px] rounded flex justify-between items-center bg-[Whitesmoke] border border-[#1C1D21] px-3 cursor-pointer select-none"
-                      onClick={() => setIsOpen(isOpen === index ? null : index)}
-                    >
-                      {/* LEFT: status */}
-                      <div className="flex items-center gap-2">
-                        <StatusChip status={report.status} approval={report.userApprovalStatus} />
-                      </div>
+            const submittedDate = submittedAt(report);
+            const submittedText = submittedDate ? formatDateTime(submittedDate) : '—';
 
-                      {/* MIDDLE: service type + submitted time */}
-                      <div className="flex flex-col items-center text-xs sm:text-sm text-gray-700">
-                        <span className="font-semibold truncate max-w-[40vw] sm:max-w-[50vw]">
-                          {report.serviceType || '—'}
-                        </span>
-                        <span className="text-gray-500">
-                          Submitted {submittedText}
-                        </span>
-                      </div>
+            // NEW: determine if this is a software-type report
+            const isSoftwareSvc =
+              (report.serviceType || '').toLowerCase() === 'it support services - software';
 
-                      {/* RIGHT: view details */}
-                      <span className="text-black font-semibold flex items-center gap-1">
-                        {isOpen === index ? 'Hide Details' : 'View Details'}
-                        <ArrowDown
-                          className={`transform transition-transform duration-300 ${isOpen === index ? 'rotate-180' : ''}`}
-                        />
-                      </span>
-                    </div>
+            return (
+              <div key={`${report._collection}:${report.id}`} className="w-full rounded overflow-hidden mb-4 px-2">
+                {/* Header */}
+                <div
+                  className="h-[54px] rounded flex justify-between items-center bg-[Whitesmoke] border border-[#1C1D21] px-3 cursor-pointer select-none"
+                  onClick={() => setIsOpen(isOpen === globalIndex ? null : globalIndex)}
+                >
+                  <div className="flex items-center gap-2">
+                    <StatusChip status={report.status} approval={report.userApprovalStatus} />
+                  </div>
 
-                    {/* Collapsible Panel */}
-                    <div
-                      className={`transition-all duration-500 ease-in-out overflow-hidden bg-white border rounded text-gray-800 px-4
-                        ${isOpen === index ? 'max-h-[2200px] py-3' : 'max-h-0 py-0'}
-                      `}
-                    >
-                      {/* Top meta fields */}
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="space-y-1">
+                  <div className="flex flex-col items-center text-xs sm:text-sm text-gray-700">
+                    <span className="font-semibold truncate max-w-[40vw] sm:max-w-[50vw]">
+                      {report.serviceType || '—'}
+                    </span>
+                    <span className="text-gray-500">
+                      Submitted {submittedText}
+                    </span>
+                  </div>
+
+                  <span className="text-black font-semibold flex items-center gap-1">
+                    {isOpen === globalIndex ? 'Hide Details' : 'View Details'}
+                    <ArrowDown
+                      className={`transform transition-transform duration-300 ${isOpen === globalIndex ? 'rotate-180' : ''}`}
+                    />
+                  </span>
+                </div>
+
+                {/* Collapsible Panel */}
+                <div
+                  className={`transition-all duration-500 ease-in-out overflow-hidden bg-white border rounded text-gray-800 px-4
+                    ${isOpen === globalIndex ? 'max-h-[2200px] py-3' : 'max-h-0 py-0'}
+                  `}
+                >
+                  {/* Top meta fields */}
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      {/* ONLY show Building/Floor for non-software */}
+                      {!isSoftwareSvc && (
+                        <>
                           <p className="text-md font-semibold">Building Name: {report.buildingName || '—'}</p>
                           <p className="text-md font-semibold">Floor Location: {report.floorLocation || '—'}</p>
-                          <p className="text-md font-semibold">Service Type: {report.serviceType || '—'}</p>
-                          <p className="text-md font-semibold">
-                            Platform / System Name: {report.platformName || report.systemName || report.platform || '—'}
-                          </p>
-                        </div>
-
-                        {/* Right: original thumbnail (click to preview) */}
-                        <div className="bg-[#0A1936] p-2 rounded shrink-0">
-                          <img
-                            src={report.imageUrl || ''}
-                            alt="Report"
-                            className="h-[70px] w-[100px] object-cover rounded cursor-pointer"
-                            onClick={() => openPreview(report.imageUrl)}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Report Details (always) */}
-                      <div className="mt-4">
-                        <h4 className="text-sm font-semibold text-gray-600 tracking-wide">Report Details</h4>
-                        <div className="mt-2 text-sm">
-                          <span className="font-semibold">Other Details: </span>
-                          {report.additionalDetails || '—'}
-                        </div>
-                      </div>
-
-                      {/* Resolution section (only when resolved) */}
-                      {isResolved && (
-                        <>
-                          <hr className="my-5 border-gray-200" />
-
-                          {/* Resolution header + small thumbnail on the right */}
-                          <div className="flex items-start justify-between gap-4">
-                            {/* Minimalist header line */}
-                            <div className="text-xs sm:text-sm text-gray-700 flex flex-wrap items-center gap-x-2">
-                              <span className="font-semibold">{report.resolvedByName || '—'}</span>
-                              <span className="text-gray-400">•</span>
-                              <span>{report.resolvedByDept || '—'}</span>
-                              <span className="text-gray-400">•</span>
-                              <span>{formatDateTime(report.resolvedAt)}</span>
-                            </div>
-
-                            {/* Resolution thumbnail */}
-                            <div className="bg-[#0A1936] p-2 rounded shrink-0">
-                              {report.resolvedImageUrl ? (
-                                <img
-                                  src={report.resolvedImageUrl}
-                                  alt="Resolution"
-                                  className="h-[70px] w-[100px] object-cover rounded cursor-pointer"
-                                  onClick={() => openPreview(report.resolvedImageUrl)}
-                                />
-                              ) : (
-                                <div className="h-[70px] w-[100px] rounded bg-[#0A1936] flex items-center justify-center text-[10px] text-white/70">
-                                  No image
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Resolution notes */}
-                          <div className="mt-3 text-sm">
-                            <span className="font-semibold">Resolution Summary: </span>
-                            {report.resolutionNotes || '—'}
-                          </div>
                         </>
                       )}
 
-                      {/* Edit button for Pending */}
-                      {isEditable && (
-                        <div className="mt-4 flex justify-center">
-                          <button
-                            className="px-4 py-2 rounded bg-[#0A1936] text-white font-semibold hover:bg-[#122751]"
-                            onClick={() => openEdit(report)}
-                          >
-                            Edit Report
-                          </button>
-                        </div>
-                      )}
+                      <p className="text-md font-semibold">Service Type: {report.serviceType || '—'}</p>
 
-                      {/* Approval controls for the reporter when Resolved + pending */}
-                      {(report.status || '').toLowerCase() === 'resolved' &&
-                        uid === report.uid &&
-                        (report.userApprovalStatus || 'pending') === 'pending' && (
-                          <div className="mt-4 flex flex-col sm:flex-row gap-2 justify-center">
-                            <button
-                              className="px-4 py-2 rounded bg-green-600 text-white font-semibold hover:bg-green-700"
-                              onClick={() => approveResolution(report)}
-                            >
-                              Approve — Issue Resolved
-                            </button>
-                            <button
-                              className="px-4 py-2 rounded bg-red-600 text-white font-semibold hover:bg-red-700"
-                              onClick={() => declineResolution(report)}
-                            >
-                              Decline — Not Resolved
-                            </button>
-                          </div>
-                        )}
-
-                      {/* Remove button ONLY for Resolved */}
-                      {(report.status || '').toLowerCase() === 'resolved' && (
-                        <div className="flex justify-center bg-red-600 mt-4 py-2 rounded text-white cursor-pointer hover:bg-red-700">
-                          <button onClick={() => removeFromMyLog(report)}>
-                            Remove from My Log
-                          </button>
-                        </div>
+                      {/* ONLY show Platform/System for software */}
+                      {isSoftwareSvc && (
+                        <p className="text-md font-semibold">
+                          Platform / System Name: {report.platformName || report.systemName || report.platform || '—'}
+                        </p>
                       )}
                     </div>
+
+                    {/* Right: original thumbnail (click to preview) */}
+                    <div className="bg-[#0A1936] p-2 rounded shrink-0">
+                      <img
+                        src={report.imageUrl || ''}
+                        alt="Report"
+                        className="h-[70px] w-[100px] object-cover rounded cursor-pointer"
+                        onClick={() => openPreview(report.imageUrl)}
+                      />
+                    </div>
                   </div>
-                );
-              })}
-            </div>
+
+                  {/* Report Details (always) */}
+                  <div className="mt-4">
+                    <h4 className="text-sm font-semibold text-gray-600 tracking-wide">Report Details</h4>
+                    <div className="mt-2 text-sm">
+                      <span className="font-semibold">Other Details: </span>
+                      {report.additionalDetails || '—'}
+                    </div>
+                  </div>
+
+                  {/* Resolution section (only when resolved) */}
+                  {isResolved && (
+                    <>
+                      <hr className="my-5 border-gray-200" />
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="text-xs sm:text-sm text-gray-700 flex flex-wrap items-center gap-x-2">
+                          <span className="font-semibold">{report.resolvedByName || '—'}</span>
+                          <span className="text-gray-400">•</span>
+                          <span>{report.resolvedByDept || '—'}</span>
+                          <span className="text-gray-400">•</span>
+                          <span>{formatDateTime(report.resolvedAt)}</span>
+                        </div>
+
+                        <div className="bg-[#0A1936] p-2 rounded shrink-0">
+                          {report.resolvedImageUrl ? (
+                            <img
+                              src={report.resolvedImageUrl}
+                              alt="Resolution"
+                              className="h-[70px] w-[100px] object-cover rounded cursor-pointer"
+                              onClick={() => openPreview(report.resolvedImageUrl)}
+                            />
+                          ) : (
+                            <div className="h-[70px] w-[100px] rounded bg-[#0A1936] flex items-center justify-center text-[10px] text-white/70">
+                              No image
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-3 text-sm">
+                        <span className="font-semibold">Resolution Summary: </span>
+                        {report.resolutionNotes || '—'}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Edit button for Pending */}
+                  {isEditable && (
+                    <div className="mt-4 flex justify-center">
+                      <button
+                        className="px-4 py-2 rounded bg-[#0A1936] text-white font-semibold hover:bg-[#122751]"
+                        onClick={() => openEdit(report)}
+                      >
+                        Edit Report
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Approval controls (Resolved + pending) */}
+                  {(report.status || '').toLowerCase() === 'resolved' &&
+                    uid === report.uid &&
+                    (report.userApprovalStatus || 'pending') === 'pending' && (
+                      <div className="mt-4 flex flex-col sm:flex-row gap-2 justify-center">
+                        <button
+                          className="px-4 py-2 rounded bg-green-600 text-white font-semibold hover:bg-green-700"
+                          onClick={() => approveResolution(report)}
+                        >
+                          Approve — Issue Resolved
+                        </button>
+                        <button
+                          className="px-4 py-2 rounded bg-red-600 text-white font-semibold hover:bg-red-700"
+                          onClick={() => declineResolution(report)}
+                        >
+                          Decline — Not Resolved
+                        </button>
+                      </div>
+                    )}
+
+                  {/* Remove button ONLY when Resolved AND Approved */}
+                  {(report.status || '').toLowerCase() === 'resolved' &&
+                    (report.userApprovalStatus || 'pending').toLowerCase() === 'approved' && (
+                      <div className="flex justify-center bg-red-600 mt-4 py-2 rounded text-white cursor-pointer hover:bg-red-700">
+                        <button onClick={() => removeFromMyLog(report)}>
+                          Remove from My Log
+                        </button>
+                      </div>
+                    )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {!loading && filteredList.length > 0 && (
+        <div className="mt-4 flex flex-wrap justify-center items-center gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className={`px-3 py-1 border rounded transition-colors ${page === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-200'}`}
+          >
+            Previous
+          </button>
+
+          <div className="flex items-center gap-2">
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPage(p)}
+                className={`px-3 py-1 border rounded transition-colors ${p === page ? 'bg-blue-500 text-white' : 'hover:bg-gray-200'}`}
+              >
+                {p}
+              </button>
+            ))}
           </div>
-        )}
-      </div>
+
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            className={`px-3 py-1 border rounded transition-colors ${page === totalPages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-200'}`}
+          >
+            Next
+          </button>
+        </div>
+      )}
 
       {/* Full-screen image preview */}
       {imgPreviewUrl && (
@@ -820,12 +850,10 @@ const ReportLog = () => {
             {/* Image picker */}
             <div className="mt-3">
               <label className="block text-sm font-semibold mb-1">Image</label>
-
-              {/* current or new preview (small) */}
               <div className="flex items-center gap-3">
                 <div className="bg-[#0A1936] p-2 rounded">
                   <img
-                    src={newImageFile ? URL.createObjectURL(newImageFile) : (currentImageUrl || '')}
+                    src={newImageFile ? URL.createObjectURL(newImageFile) : currentImageUrl || ''}
                     alt="Preview"
                     className="h-[70px] w-[100px] object-cover rounded"
                   />

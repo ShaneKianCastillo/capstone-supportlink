@@ -30,12 +30,16 @@ const AssetRequest = () => {
     try {
       setLoading(true);
       const imgUrl = await handleUpload();
+      if (!imgUrl) {
+        incompleteForm();
+        return;
+      }
 
       await addDoc(assetReqRef, {
         serverTimeStamp: serverTimestamp(),
         uid,
-        assetName,
-        reason,
+        assetName: assetName.trim(),
+        reason: reason.trim(),
         imageUrl: imgUrl,
         status: 'Pending',
       });
@@ -88,6 +92,63 @@ const AssetRequest = () => {
     setShowFullImage(false);
   };
 
+  // Reusable image picker with Upload & Take Photo
+  const ImagePicker = () => (
+    <div className="w-full">
+      <div className="bg-gray-200 h-40 sm:h-48 lg:h-56 w-full flex items-center justify-center rounded mb-1 overflow-hidden relative">
+        {image ? (
+          <div
+            className="h-full w-full cursor-pointer"
+            onMouseDown={handleMouseDown}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            onTouchStart={handleMouseDown}
+            onTouchEnd={handleMouseUp}
+          >
+            <img
+              src={URL.createObjectURL(image)}
+              alt="Uploaded Preview"
+              className="h-full w-full object-cover rounded"
+            />
+            <button
+              type="button"
+              onClick={handleRemoveImage}
+              className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 text-xs rounded shadow"
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col sm:flex-row gap-2 items-center justify-center">
+            {/* Upload from files */}
+            <label className="cursor-pointer px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 text-sm font-semibold text-gray-700">
+              Upload Photo
+              <input
+                onChange={(e) => setImage(e.target.files[0])}
+                type="file"
+                accept="image/*"
+                className="hidden"
+              />
+            </label>
+
+            {/* Take photo with camera */}
+            <label className="cursor-pointer px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 text-sm font-semibold text-gray-700">
+              Take Photo
+              <input
+                onChange={(e) => setImage(e.target.files[0])}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+              />
+            </label>
+          </div>
+        )}
+      </div>
+      <div className="text-[11px] text-gray-500">Image is required.</div>
+    </div>
+  );
+
   return (
     <div className="w-full">
       <h1 className="text-2xl sm:text-3xl font-semibold">Asset Request</h1>
@@ -110,46 +171,8 @@ const AssetRequest = () => {
           />
         </div>
 
-        {/* UPLOAD IMAGE (same UX as ReportModule) */}
-        <div className="w-full">
-          <div className="bg-gray-200 h-40 sm:h-48 lg:h-56 w-full flex items-center justify-center rounded mb-1 overflow-hidden relative">
-            {image ? (
-              <div
-                className="h-full w-full cursor-pointer"
-                onMouseDown={handleMouseDown}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
-                onTouchStart={handleMouseDown}
-                onTouchEnd={handleMouseUp}
-              >
-                <img
-                  src={URL.createObjectURL(image)}
-                  alt="Uploaded Preview"
-                  className="h-full w-full object-cover rounded"
-                />
-                <button
-                  type="button"
-                  onClick={handleRemoveImage}
-                  className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 text-xs rounded shadow"
-                >
-                  Remove
-                </button>
-              </div>
-            ) : (
-              <label className="flex flex-col items-center justify-center cursor-pointer h-full w-full">
-                <span className="text-sm font-semibold text-gray-700">
-                  UPLOAD IMAGE
-                </span>
-                <input
-                  onChange={(e) => setImage(e.target.files[0])}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                />
-              </label>
-            )}
-          </div>
-        </div>
+        {/* IMAGE PICKER (Upload / Take Photo) */}
+        <ImagePicker />
 
         {/* FULL IMAGE MODAL */}
         {showFullImage && image && (
@@ -183,7 +206,7 @@ const AssetRequest = () => {
         <div className="w-full flex">
           <button
             type="submit"
-            className="w-full md:w-2/3 lg:w-1/2 mx-auto bg-[#494949] text-white font-semibold py-3 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+            className="w-full md:w-2/3 lg:w-1/2 mx-auto bg-[#0A1936] text-white font-semibold py-3 rounded disabled:opacity-60 disabled:cursor-not-allowed"
             disabled={loading}
           >
             {loading ? 'Submitting...' : 'Submit Request'}

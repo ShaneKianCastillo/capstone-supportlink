@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { X, User } from "lucide-react";
 import { db } from "../../config/firebase";
 import {
   collection,
@@ -10,6 +10,8 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import axios from "axios";
+
+const PAGE_SIZE = 6;
 
 const OnProcess = () => {
   const [reports, setReports] = useState([]);
@@ -36,7 +38,7 @@ const OnProcess = () => {
   const [resolutionImage, setResolutionImage] = useState(null);
   const [resolutionNotes, setResolutionNotes] = useState("");
 
-  // image hold-to-zoom
+  // image hold-to-zoom (kept) + click-to-preview (new)
   const [showImageFull, setShowImageFull] = useState(false);
   const imgTimerRef = useRef(null);
   const holdToOpen = () => {
@@ -45,6 +47,11 @@ const OnProcess = () => {
   const releaseHold = () => {
     clearTimeout(imgTimerRef.current);
   };
+
+  // NEW: generic preview overlay (for avatar or report image)
+  const [imgPreviewUrl, setImgPreviewUrl] = useState(null);
+  const openPreview = (url) => url && setImgPreviewUrl(url);
+  const closePreview = () => setImgPreviewUrl(null);
 
   // role → allowed service types
   const allowedTypesForRole = (role) => {
@@ -121,8 +128,8 @@ const OnProcess = () => {
     ts && typeof ts.toDate === "function"
       ? ts.toDate()
       : ts instanceof Date
-        ? ts
-        : null;
+      ? ts
+      : null;
 
   const formatDateTime = (ts) => {
     try {
@@ -148,6 +155,7 @@ const OnProcess = () => {
         userName: u.name || "—",
         userDept: u.department || "—",
         userRole: u.role || "—",
+        userPhotoUrl: u.photoUrl || "", // 👈 pull avatar
       };
     });
   }, [reports, usersById]);
@@ -158,7 +166,7 @@ const OnProcess = () => {
     return combined.filter((r) => allowedTypes.includes(r.serviceType || ""));
   }, [combined, allowedTypes]);
 
-  // -------- Filters (same pattern as SentReports) --------
+  // -------- Filters --------
   const [q, setQ] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -250,6 +258,20 @@ const OnProcess = () => {
     return Boolean(q.trim() || from || to);
   }, [q, from, to]);
 
+  // ---------- Pagination ----------
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(filteredCount / PAGE_SIZE));
+  const startIdx = (page - 1) * PAGE_SIZE;
+  const pageRows = filtered.slice(startIdx, startIdx + PAGE_SIZE);
+
+  useEffect(() => {
+    setPage(1);
+  }, [q, from, to, sort]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [totalPages, page]);
+
   const openModal = (report) => {
     setSelected(report);
     setOpen(true);
@@ -311,7 +333,6 @@ const OnProcess = () => {
           ...rest,
           sourceReportId: id,
 
-          // Existing resolution fields
           status: "Resolved",
           resolvedAt: serverTimestamp(),
           resolutionNotes: (resolutionNotes || "").trim(),
@@ -320,12 +341,12 @@ const OnProcess = () => {
           resolvedByName,
           resolvedByDept,
 
-          // NEW: user approval flow
-          userApprovalStatus: "pending",         // 'pending' | 'approved' | 'declined'
+          // user approval flow
+          userApprovalStatus: "pending",
           userApprovalPendingForUid: reporterUid,
           userApprovalPendingForName: reporterName,
-          userApprovalAt: null,                  // will be set when user approves/declines
-          userApprovalNotes: null,               // optional; used on decline
+          userApprovalAt: null,
+          userApprovalNotes: null,
         },
         { merge: true }
       );
@@ -439,31 +460,89 @@ const OnProcess = () => {
         </div>
       )}
 
-      {/* List */}
+      {/* List (paged) */}
       {!loading && filtered.length > 0 && (
-        <div className="mt-6 space-y-3">
-          {filtered.map((r) => (
-            <div
-              key={r.id}
-              className="flex flex-col sm:flex-row items-center sm:items-center justify-between gap-3 bg-[whitesmoke] border-2 border-[#1C1D21] text-black px-4 py-4 min-h-[64px] rounded"
-            >
+        <>
+          <div className="mt-6 space-y-3">
+            {pageRows.map((r) => (
+              <div
+                key={r.id}
+                className="flex flex-col sm:flex-row items-center sm:items-center justify-between gap-3 bg-[whitesmoke] border-2 border-[#1C1D21] text-black px-4 py-4 min-h-[64px] rounded"
+              >
+                {/* LEFT: avatar + line */}
+                <div className="flex items-center gap-3">
+                  <div
+                    className="h-10 w-10 rounded-full overflow-hidden bg-gray-300 flex items-center justify-center shrink-0 cursor-pointer"
+                    onClick={() => r.userPhotoUrl && openPreview(r.userPhotoUrl)}
+                    title={r.userPhotoUrl ? "View reporter photo" : ""}
+                  >
+                    {r.userPhotoUrl ? (
+                      <img
+                        src={r.userPhotoUrl}
+                        alt={`${r.userName || "Reporter"} avatar`}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <User className="text-gray-600" size={20} />
+                    )}
+                  </div>
 
-              <p className="text-sm sm:text-base text-black">
-                <span className="font-semibold">{r.userName}</span> — {r.userDept} —{" "}
-                {formatDateTime(r.processedAt || r.serverTimeStamp)}
-              </p>
+                  <p className="text-sm sm:text-base text-black">
+                    <span className="font-semibold">{r.userName}</span> — {r.userDept} —{" "}
+                    {formatDateTime(r.processedAt || r.serverTimeStamp)}
+                  </p>
+                </div>
 
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={() => openModal(r)}
-                  className="font-semibold underline underline-offset-4 text-black"
-                >
-                  View Report
-                </button>
+                {/* RIGHT: actions */}
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => openModal(r)}
+                    className="font-semibold underline underline-offset-4 text-black"
+                  >
+                    View Report
+                  </button>
+                </div>
               </div>
+            ))}
+          </div>
+
+          {/* Pagination */}
+          <div className="mt-4 flex flex-wrap justify-center items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className={`px-3 py-1 border rounded transition-colors ${
+                page === 1 ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-200"
+              }`}
+            >
+              Previous
+            </button>
+
+            <div className="flex items-center gap-2">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className={`px-3 py-1 border rounded transition-colors ${
+                    p === page ? "bg-blue-500 text-white" : "hover:bg-gray-200"
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
             </div>
-          ))}
-        </div>
+
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className={`px-3 py-1 border rounded transition-colors ${
+                page === totalPages ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-200"
+              }`}
+            >
+              Next
+            </button>
+          </div>
+        </>
       )}
 
       {/* View Modal */}
@@ -504,6 +583,7 @@ const OnProcess = () => {
                   onMouseLeave={releaseHold}
                   onTouchStart={holdToOpen}
                   onTouchEnd={releaseHold}
+                  onClick={() => openPreview(selected.imageUrl)} // 👈 click to full preview
                 />
               </div>
             )}
@@ -552,7 +632,7 @@ const OnProcess = () => {
             }
           `}</style>
 
-          {/* Full image overlay */}
+          {/* Hold-to-zoom overlay (kept) */}
           {showImageFull && selected?.imageUrl && (
             <div
               className="fixed inset-0 bg-black/80 flex justify-center items-center z-[60]"
@@ -658,6 +738,20 @@ const OnProcess = () => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* NEW: Full-screen image preview overlay (avatar or report image) */}
+      {imgPreviewUrl && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center"
+          onClick={closePreview}
+        >
+          <img
+            src={imgPreviewUrl}
+            alt="Preview"
+            className="max-h-[90%] max-w-[90%] rounded shadow-2xl"
+          />
         </div>
       )}
     </div>

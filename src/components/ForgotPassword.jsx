@@ -56,14 +56,14 @@ const ForgotPassword = () => {
       {/* Panel / Card: same shell as Login */}
       <div className="w-full max-w-5xl rounded-2xl shadow-2xl overflow-hidden bg-white grid grid-cols-1 md:grid-cols-2">
         {/* LEFT: image + headline (same as Login left) */}
-        <div className="relative order-2 md:order-1 flex items-start justify-center bg-gray-200">
+        <div className="relative order-1 md:order-2 flex items-start justify-center bg-gray-200">
           <img
             src={loginBg}
             alt="Campus"
-            className="absolute inset-0 h-full w-full object-contain md:object-cover"
+            className="absolute inset-0 h-full w-full object-contain object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-tr from-black/10 via-black/15 to-transparent" />
-          <div className="relative z-10 w-full max-w-sm px-6 md:px-10 pt-10 md:pt-14">
+          <div className="relative z-10 w-full max-w-sm px-6 md:px-10 pt-10 md:pt-14 pb-8">
             <div className="inline-block rounded-xl bg-black/30 backdrop-blur-md px-4 py-3">
               <h3 className="text-white text-2xl md:text-3xl font-extrabold drop-shadow-[0_3px_8px_rgba(0,0,0,0.8)]">
                 Forgot your password?
