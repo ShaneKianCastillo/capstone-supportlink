@@ -10,7 +10,7 @@ import {
   setDoc,
   serverTimestamp,
   deleteDoc,
-  updateDoc,           // 👈 NEW
+  updateDoc,
 } from 'firebase/firestore';
 import Swal from 'sweetalert2';
 
@@ -57,6 +57,53 @@ const ReportLog = () => {
   // hidden file inputs for upload/take
   const fileInputId = 'edit-file-upload';
   const cameraInputId = 'edit-file-camera';
+
+  // ---- helpers ----
+  const formatDateTime = (ts) => {
+    try {
+      const d =
+        ts && typeof ts.toDate === 'function' ? ts.toDate()
+          : ts instanceof Date ? ts
+            : null;
+      if (!d) return '—';
+      return d.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return '—';
+    }
+  };
+
+  // original submission timestamp (for header display)
+  const submittedAt = (r) =>
+    r?.serverTimeStamp?.toDate?.() ??
+    (r?.serverTimeStamp instanceof Date ? r.serverTimeStamp : null);
+
+  const StatusChip = ({ status, approval }) => {
+    const s = (status || '').toLowerCase();              // 'pending' | 'on process' | 'resolved'
+    const a = (approval || 'pending').toLowerCase();     // 'pending' | 'approved' | 'declined'
+
+    if (s === 'resolved') {
+      if (a === 'approved')
+        return <span className="bg-green-600 text-white text-xs px-2 py-1 rounded">Resolved (Approved)</span>;
+      if (a === 'declined')
+        return <span className="bg-red-600 text-white text-xs px-2 py-1 rounded">Not Resolved</span>;
+      // pending
+      return <span className="bg-yellow-500 text-white text-xs px-2 py-1 rounded">Resolved (Pending Your Approval)</span>;
+    }
+
+    if (s === 'on process')
+      return <span className="bg-yellow-500 text-white text-xs px-2 py-1 rounded">On Process</span>;
+
+    if (s === 'pending')
+      return <span className="bg-gray-500 text-white text-xs px-2 py-1 rounded">Pending</span>;
+
+    return <span className="bg-slate-500 text-white text-xs px-2 py-1 rounded">{status || '—'}</span>;
+  };
 
   // Load per-user hidden resolved IDs
   useEffect(() => {
@@ -150,48 +197,6 @@ const ReportLog = () => {
     });
   }, [allReports, hiddenSet]);
 
-  const formatDateTime = (ts) => {
-    try {
-      const d =
-        ts && typeof ts.toDate === 'function' ? ts.toDate()
-          : ts instanceof Date ? ts
-            : null;
-      if (!d) return '—';
-      return d.toLocaleString(undefined, {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch {
-      return '—';
-    }
-  };
-
-  const StatusChip = ({ status, approval }) => {
-    const s = (status || '').toLowerCase();              // 'pending' | 'on process' | 'resolved'
-    const a = (approval || 'pending').toLowerCase();     // 'pending' | 'approved' | 'declined'
-
-    if (s === 'resolved') {
-      if (a === 'approved')
-        return <span className="bg-green-600 text-white text-xs px-2 py-1 rounded">Resolved (Approved)</span>;
-      if (a === 'declined')
-        return <span className="bg-red-600 text-white text-xs px-2 py-1 rounded">Not Resolved</span>;
-      // pending
-      return <span className="bg-yellow-500 text-white text-xs px-2 py-1 rounded">Resolved (Pending Your Approval)</span>;
-    }
-
-    if (s === 'on process')
-      return <span className="bg-yellow-500 text-white text-xs px-2 py-1 rounded">On Process</span>;
-
-    if (s === 'pending')
-      return <span className="bg-gray-500 text-white text-xs px-2 py-1 rounded">Pending</span>;
-
-    return <span className="bg-slate-500 text-white text-xs px-2 py-1 rounded">{status || '—'}</span>;
-  };
-
-
   // Counts (visible items only)
   const counts = useMemo(() => {
     let pending = 0, onproc = 0, resolved = 0;
@@ -253,8 +258,6 @@ const ReportLog = () => {
       // If admin already hid it, now both removed -> HARD DELETE
       if (report.hiddenForAdmin) {
         await deleteDoc(doc(db, 'resolvedReports', report.id));
-        // Optional cleanup: remove your hide marker too
-        // await deleteDoc(hideRef);
       }
 
       Swal.close();
@@ -561,157 +564,174 @@ const ReportLog = () => {
           <div className="text-sm text-gray-500 my-6">No reports found for this status.</div>
         )}
 
-        {/* List */}
-        {!loading && !error && filteredList.map((report, index) => {
-          const isResolved = (report.status || '').toLowerCase() === 'resolved';
-          const isPending = (report.status || '').toLowerCase() === 'pending';
-          const isEditable = isPending && report._collection === 'userReport'; // only pending in userReport can be edited
+        {/* List (scrollable container) */}
+        {!loading && !error && filteredList.length > 0 && (
+          <div className="rounded-lg border bg-white">
+            <div className="max-h-[65vh] overflow-y-auto px-0 py-3">
+              {filteredList.map((report, index) => {
+                const isResolved = (report.status || '').toLowerCase() === 'resolved';
+                const isPending  = (report.status || '').toLowerCase() === 'pending';
+                const isEditable = isPending && report._collection === 'userReport';
 
-          return (
-            <div key={`${report._collection}:${report.id}`} className="w-full rounded overflow-hidden mb-4">
-              {/* Header */}
-              <div
-                className="h-[50px] rounded flex justify-between items-center bg-[#1C1D21] px-3 cursor-pointer select-none"
-                onClick={() => setIsOpen(isOpen === index ? null : index)}
-              >
-                {/* Left: Status chip */}
-                {/* Left: Status chip */}
-                <div className="flex items-center gap-2">
-                  <StatusChip status={report.status} approval={report.userApprovalStatus} />
-                </div>
+                const submittedDate = submittedAt(report);
+                const submittedText = submittedDate ? formatDateTime(submittedDate) : '—';
 
-
-                {/* Right: text + chevron */}
-                <span className="text-white flex justify-center items-center gap-1">
-                  {isOpen === index ? 'Hide Details' : 'View Details'}
-                  <ArrowDown
-                    className={`transform transition-transform duration-300 ${isOpen === index ? 'rotate-180' : ''}`}
-                  />
-                </span>
-              </div>
-
-              {/* Collapsible Panel */}
-              <div
-                className={`transition-all duration-500 ease-in-out overflow-hidden bg-white border rounded text-gray-800 px-4
-                  ${isOpen === index ? 'max-h-[2200px] py-3' : 'max-h-0 py-0'}
-                `}
-              >
-                {/* Top meta fields */}
-                <div className="flex items-start justify-between gap-4">
-                  <div className="space-y-1">
-                    <p className="text-md font-semibold">Building Name: {report.buildingName || '—'}</p>
-                    <p className="text-md font-semibold">Floor Location: {report.floorLocation || '—'}</p>
-                    <p className="text-md font-semibold">Service Type: {report.serviceType || '—'}</p>
-                    <p className="text-md font-semibold">
-                      Platform / System Name: {report.platformName || report.systemName || report.platform || '—'}
-                    </p>
-                  </div>
-
-                  {/* Right: original thumbnail (click to preview) */}
-                  <div className="bg-[#0A1936] p-2 rounded shrink-0">
-                    <img
-                      src={report.imageUrl || ''}
-                      alt="Report"
-                      className="h-[70px] w-[100px] object-cover rounded cursor-pointer"
-                      onClick={() => openPreview(report.imageUrl)}
-                    />
-                  </div>
-                </div>
-
-                {/* Report Details (always) */}
-                <div className="mt-4">
-                  <h4 className="text-sm font-semibold text-gray-600 tracking-wide">Report Details</h4>
-                  <div className="mt-2 text-sm">
-                    <span className="font-semibold">Other Details: </span>
-                    {report.additionalDetails || '—'}
-                  </div>
-                </div>
-
-                {/* Resolution section (only when resolved) */}
-                {isResolved && (
-                  <>
-                    <hr className="my-5 border-gray-200" />
-
-                    {/* Resolution header + small thumbnail on the right */}
-                    <div className="flex items-start justify-between gap-4">
-                      {/* Minimalist header line */}
-                      <div className="text-xs sm:text-sm text-gray-700 flex flex-wrap items-center gap-x-2">
-                        <span className="font-semibold">{report.resolvedByName || '—'}</span>
-                        <span className="text-gray-400">•</span>
-                        <span>{report.resolvedByDept || '—'}</span>
-                        <span className="text-gray-400">•</span>
-                        <span>{formatDateTime(report.resolvedAt)}</span>
+                return (
+                  <div key={`${report._collection}:${report.id}`} className="w-full rounded overflow-hidden mb-4 px-2">
+                    {/* Header */}
+                    <div
+                      className="h-[54px] rounded flex justify-between items-center bg-[Whitesmoke] border border-[#1C1D21] px-3 cursor-pointer select-none"
+                      onClick={() => setIsOpen(isOpen === index ? null : index)}
+                    >
+                      {/* LEFT: status */}
+                      <div className="flex items-center gap-2">
+                        <StatusChip status={report.status} approval={report.userApprovalStatus} />
                       </div>
 
-                      {/* Resolution thumbnail (same style as original) */}
-                      <div className="bg-[#0A1936] p-2 rounded shrink-0">
-                        {report.resolvedImageUrl ? (
+                      {/* MIDDLE: service type + submitted time */}
+                      <div className="flex flex-col items-center text-xs sm:text-sm text-gray-700">
+                        <span className="font-semibold truncate max-w-[40vw] sm:max-w-[50vw]">
+                          {report.serviceType || '—'}
+                        </span>
+                        <span className="text-gray-500">
+                          Submitted {submittedText}
+                        </span>
+                      </div>
+
+                      {/* RIGHT: view details */}
+                      <span className="text-black font-semibold flex items-center gap-1">
+                        {isOpen === index ? 'Hide Details' : 'View Details'}
+                        <ArrowDown
+                          className={`transform transition-transform duration-300 ${isOpen === index ? 'rotate-180' : ''}`}
+                        />
+                      </span>
+                    </div>
+
+                    {/* Collapsible Panel */}
+                    <div
+                      className={`transition-all duration-500 ease-in-out overflow-hidden bg-white border rounded text-gray-800 px-4
+                        ${isOpen === index ? 'max-h-[2200px] py-3' : 'max-h-0 py-0'}
+                      `}
+                    >
+                      {/* Top meta fields */}
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-1">
+                          <p className="text-md font-semibold">Building Name: {report.buildingName || '—'}</p>
+                          <p className="text-md font-semibold">Floor Location: {report.floorLocation || '—'}</p>
+                          <p className="text-md font-semibold">Service Type: {report.serviceType || '—'}</p>
+                          <p className="text-md font-semibold">
+                            Platform / System Name: {report.platformName || report.systemName || report.platform || '—'}
+                          </p>
+                        </div>
+
+                        {/* Right: original thumbnail (click to preview) */}
+                        <div className="bg-[#0A1936] p-2 rounded shrink-0">
                           <img
-                            src={report.resolvedImageUrl}
-                            alt="Resolution"
+                            src={report.imageUrl || ''}
+                            alt="Report"
                             className="h-[70px] w-[100px] object-cover rounded cursor-pointer"
-                            onClick={() => openPreview(report.resolvedImageUrl)}
+                            onClick={() => openPreview(report.imageUrl)}
                           />
-                        ) : (
-                          <div className="h-[70px] w-[100px] rounded bg-[#0A1936] flex items-center justify-center text-[10px] text-white/70">
-                            No image
+                        </div>
+                      </div>
+
+                      {/* Report Details (always) */}
+                      <div className="mt-4">
+                        <h4 className="text-sm font-semibold text-gray-600 tracking-wide">Report Details</h4>
+                        <div className="mt-2 text-sm">
+                          <span className="font-semibold">Other Details: </span>
+                          {report.additionalDetails || '—'}
+                        </div>
+                      </div>
+
+                      {/* Resolution section (only when resolved) */}
+                      {isResolved && (
+                        <>
+                          <hr className="my-5 border-gray-200" />
+
+                          {/* Resolution header + small thumbnail on the right */}
+                          <div className="flex items-start justify-between gap-4">
+                            {/* Minimalist header line */}
+                            <div className="text-xs sm:text-sm text-gray-700 flex flex-wrap items-center gap-x-2">
+                              <span className="font-semibold">{report.resolvedByName || '—'}</span>
+                              <span className="text-gray-400">•</span>
+                              <span>{report.resolvedByDept || '—'}</span>
+                              <span className="text-gray-400">•</span>
+                              <span>{formatDateTime(report.resolvedAt)}</span>
+                            </div>
+
+                            {/* Resolution thumbnail */}
+                            <div className="bg-[#0A1936] p-2 rounded shrink-0">
+                              {report.resolvedImageUrl ? (
+                                <img
+                                  src={report.resolvedImageUrl}
+                                  alt="Resolution"
+                                  className="h-[70px] w-[100px] object-cover rounded cursor-pointer"
+                                  onClick={() => openPreview(report.resolvedImageUrl)}
+                                />
+                              ) : (
+                                <div className="h-[70px] w-[100px] rounded bg-[#0A1936] flex items-center justify-center text-[10px] text-white/70">
+                                  No image
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Resolution notes */}
+                          <div className="mt-3 text-sm">
+                            <span className="font-semibold">Resolution Summary: </span>
+                            {report.resolutionNotes || '—'}
+                          </div>
+                        </>
+                      )}
+
+                      {/* Edit button for Pending */}
+                      {isEditable && (
+                        <div className="mt-4 flex justify-center">
+                          <button
+                            className="px-4 py-2 rounded bg-[#0A1936] text-white font-semibold hover:bg-[#122751]"
+                            onClick={() => openEdit(report)}
+                          >
+                            Edit Report
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Approval controls for the reporter when Resolved + pending */}
+                      {(report.status || '').toLowerCase() === 'resolved' &&
+                        uid === report.uid &&
+                        (report.userApprovalStatus || 'pending') === 'pending' && (
+                          <div className="mt-4 flex flex-col sm:flex-row gap-2 justify-center">
+                            <button
+                              className="px-4 py-2 rounded bg-green-600 text-white font-semibold hover:bg-green-700"
+                              onClick={() => approveResolution(report)}
+                            >
+                              Approve — Issue Resolved
+                            </button>
+                            <button
+                              className="px-4 py-2 rounded bg-red-600 text-white font-semibold hover:bg-red-700"
+                              onClick={() => declineResolution(report)}
+                            >
+                              Decline — Not Resolved
+                            </button>
                           </div>
                         )}
-                      </div>
-                    </div>
 
-                    {/* Resolution notes */}
-                    <div className="mt-3 text-sm">
-                      <span className="font-semibold">Resolution Summary: </span>
-                      {report.resolutionNotes || '—'}
+                      {/* Remove button ONLY for Resolved */}
+                      {(report.status || '').toLowerCase() === 'resolved' && (
+                        <div className="flex justify-center bg-red-600 mt-4 py-2 rounded text-white cursor-pointer hover:bg-red-700">
+                          <button onClick={() => removeFromMyLog(report)}>
+                            Remove from My Log
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  </>
-                )}
-
-                {/* Edit button for Pending */}
-                {isEditable && (
-                  <div className="mt-4 flex justify-center">
-                    <button
-                      className="px-4 py-2 rounded bg-[#0A1936] text-white font-semibold hover:bg-[#122751]"
-                      onClick={() => openEdit(report)}
-                    >
-                      Edit Report
-                    </button>
                   </div>
-                )}
-
-                {/* Approval controls for the reporter when Resolved + pending */}
-                {(report.status || '').toLowerCase() === 'resolved' &&
-                  uid === report.uid &&
-                  (report.userApprovalStatus || 'pending') === 'pending' && (
-                    <div className="mt-4 flex flex-col sm:flex-row gap-2 justify-center">
-                      <button
-                        className="px-4 py-2 rounded bg-green-600 text-white font-semibold hover:bg-green-700"
-                        onClick={() => approveResolution(report)}
-                      >
-                        Approve — Issue Resolved
-                      </button>
-                      <button
-                        className="px-4 py-2 rounded bg-red-600 text-white font-semibold hover:bg-red-700"
-                        onClick={() => declineResolution(report)}
-                      >
-                        Decline — Not Resolved
-                      </button>
-                    </div>
-                  )}
-
-                {/* Remove button ONLY for Resolved */}
-                {(report.status || '').toLowerCase() === 'resolved' && (
-                  <div className="flex justify-center bg-red-600 mt-4 py-2 rounded text-white cursor-pointer hover:bg-red-700">
-                    <button onClick={() => removeFromMyLog(report)}>
-                      Remove from My Log
-                    </button>
-                  </div>
-                )}
-              </div>
+                );
+              })}
             </div>
-          );
-        })}
+          </div>
+        )}
       </div>
 
       {/* Full-screen image preview */}

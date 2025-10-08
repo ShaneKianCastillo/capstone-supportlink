@@ -445,7 +445,7 @@ const OnProcess = () => {
           {filtered.map((r) => (
             <div
               key={r.id}
-              className="flex flex-col sm:flex-row items-center sm:items-center justify-between gap-3 bg-[whitesmoke] border-2 border-[#1C1D21] text-white px-4 py-4 min-h-[64px] rounded"
+              className="flex flex-col sm:flex-row items-center sm:items-center justify-between gap-3 bg-[whitesmoke] border-2 border-[#1C1D21] text-black px-4 py-4 min-h-[64px] rounded"
             >
 
               <p className="text-sm sm:text-base text-black">

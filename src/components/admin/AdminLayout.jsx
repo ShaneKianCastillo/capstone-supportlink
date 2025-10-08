@@ -327,7 +327,7 @@ const AdminLayout = ({ setRole }) => {
       {/* Header (fixed) — no logo */}
       <header
         className={`
-          fixed top-0 left-0 right-0 ${HEADER_H} bg-[whitesmoke] z-40 lg:ml-64
+          fixed top-0 left-0 right-0 ${HEADER_H} bg-[whitesmoke] lg:ml-64
           border-b border-gray-200 shadow-sm
         `}
       >

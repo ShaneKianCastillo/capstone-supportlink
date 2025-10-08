@@ -1,12 +1,8 @@
-* {
-    box-sizing: border-box;
-    
-}
-
-.login-page {
-    background-image: url("../assets/LoginBG.png");
-    background-size: 100% 100%;         /* Make the image cover the whole screen */
-    background-repeat: no-repeat;   /* Prevent the image from repeating */
-    background-position: center;
-    height: 100vh;
+/* Right-half of the panel uses your campus photo.
+   Only background-image is defined here; all sizing/positioning uses Tailwind. */
+.login-panel-hero {
+  background-image: url("../assets/loginPanel.png");
+  background-repeat: no-repeat;
+  background-size: cover;   /* fill the right half nicely */
+  background-position: center;
 }

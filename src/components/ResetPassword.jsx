@@ -1,12 +1,12 @@
 // src/components/auth/ResetPassword.jsx
 import React, { useEffect, useState } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
-import {
-  verifyPasswordResetCode,
-  confirmPasswordReset,
-} from "firebase/auth";
+import { verifyPasswordResetCode, confirmPasswordReset } from "firebase/auth";
 import { auth } from "../config/firebase";
 import { Eye, EyeClosed } from "lucide-react";
+import Swal from "sweetalert2";
+import capstoneLogo from "../assets/capstoneLogo_nn.png";
+import loginBg from "../assets/loginPanel.png";
 
 const ResetPassword = () => {
   const nav = useNavigate();
@@ -24,13 +24,19 @@ const ResetPassword = () => {
   const [showA, setShowA] = useState(false);
   const [showB, setShowB] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [err, setErr] = useState("");
 
   useEffect(() => {
     const run = async () => {
       if (mode !== "resetPassword" || !oobCode) {
         setVerifying(false);
         setValid(false);
+        // show error panel below; also surface modal once
+        Swal.fire({
+          icon: "error",
+          title: "Invalid link",
+          text: "This password reset link is invalid or incomplete.",
+          confirmButtonColor: "#111827",
+        });
         return;
       }
       try {
@@ -40,6 +46,12 @@ const ResetPassword = () => {
       } catch (e) {
         console.error("verifyPasswordResetCode:", e);
         setValid(false);
+        Swal.fire({
+          icon: "error",
+          title: "Link expired or used",
+          text: "This password reset link is invalid, expired, or already used. Request a new one.",
+          confirmButtonColor: "#111827",
+        });
       } finally {
         setVerifying(false);
       }
@@ -49,104 +61,209 @@ const ResetPassword = () => {
 
   const onSubmit = async (e) => {
     e.preventDefault();
-    setErr("");
+
     if (pw.length < 6) {
-      setErr("Password must be at least 6 characters.");
+      Swal.fire({
+        icon: "error",
+        title: "Weak password",
+        text: "Password must be at least 6 characters.",
+        confirmButtonColor: "#111827",
+      });
       return;
     }
     if (pw !== pw2) {
-      setErr("Passwords do not match.");
+      Swal.fire({
+        icon: "error",
+        title: "Passwords don’t match",
+        text: "Please make sure both passwords are the same.",
+        confirmButtonColor: "#111827",
+      });
       return;
     }
+
     setSubmitting(true);
     try {
       await confirmPasswordReset(auth, oobCode, pw);
-      // Link is now consumed & invalid for reuse.
+      await Swal.fire({
+        icon: "success",
+        title: "Password updated",
+        text: "Your password has been reset successfully.",
+        confirmButtonColor: "#111827",
+      });
       nav("/login", { replace: true, state: { resetSuccess: true } });
     } catch (e) {
       console.error("confirmPasswordReset:", e);
-      setErr("This reset link is invalid or expired. Please request a new one.");
+      Swal.fire({
+        icon: "error",
+        title: "Link error",
+        text: "This reset link is invalid or expired. Please request a new one.",
+        confirmButtonColor: "#111827",
+      });
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (verifying) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[whitesmoke] px-4">
-        <div className="bg-white border-2 border-[#1C1D21] rounded-2xl shadow p-6">
-          Verifying link…
+  // Shared left-side (image + headline)
+  const LeftHero = () => (
+    <div className="relative order-2 md:order-1 flex items-start justify-center bg-gray-200">
+      <img
+        src={loginBg}
+        alt="Campus"
+        className="absolute inset-0 h-full w-full object-contain md:object-cover"
+      />
+      <div className="absolute inset-0 bg-gradient-to-tr from-black/10 via-black/15 to-transparent" />
+      <div className="relative z-10 w-full max-w-sm px-6 md:px-10 pt-10 md:pt-14">
+        <div className="inline-block rounded-xl bg-black/30 backdrop-blur-md px-4 py-3">
+          <h3 className="text-white text-2xl md:text-3xl font-extrabold drop-shadow-[0_3px_8px_rgba(0,0,0,0.8)]">
+            Set a new password
+          </h3>
+          <p className="mt-1 text-white/90 text-sm md:text-base drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)]">
+            Keep your account secure with a strong passphrase.
+          </p>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (!valid) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[whitesmoke] px-4">
-        <div className="w-full max-w-md bg-white border-2 border-[#1C1D21] rounded-2xl shadow p-6 text-center">
-          <h1 className="text-xl font-semibold mb-2">Invalid or Used Link</h1>
-          <p className="text-sm text-gray-600 mb-4">
-            This password reset link is invalid, expired, or already used.
-          </p>
-          <Link to="/forgot-password" className="px-4 py-2 rounded bg-[#0A1936] text-white">
-            Request a new link
+  // RIGHT content for each state
+  const RightVerifying = () => (
+    <div className="order-1 md:order-2 p-8 md:p-10">
+      <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 mb-4">
+        Verifying link…
+      </h2>
+      <div className="h-11 w-full rounded-xl bg-gray-100 flex items-center justify-center text-gray-700">
+        <span className="h-5 w-5 animate-spin rounded-full border-2 border-gray-500 border-t-transparent mr-2" />
+        Please wait
+      </div>
+      <div className="mx-auto mt-5 h-0.5 w-2/3 bg-black/80" />
+      <div className="mt-3 text-center">
+        <Link to="/login" className="text-sm font-medium text-gray-800 underline">
+          Back to Login
+        </Link>
+      </div>
+    </div>
+  );
+
+  const RightInvalid = () => (
+    <div className="order-1 md:order-2 p-8 md:p-10">
+      <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 mb-4">
+        Invalid or Used Link
+      </h2>
+      <p className="text-sm text-gray-700 mb-4">
+        This password reset link is invalid, expired, or already used.
+      </p>
+      <Link
+        to="/forgot-password"
+        className="inline-block px-5 py-2 rounded-xl bg-gray-900 text-white hover:bg-black"
+      >
+        Request a new link
+      </Link>
+
+      <div className="mx-auto mt-5 h-0.5 w-2/3 bg-black/80" />
+      <div className="mt-3 text-center">
+        <Link to="/login" className="text-sm font-medium text-gray-800 underline">
+          Back to Login
+        </Link>
+      </div>
+    </div>
+  );
+
+  const RightForm = () => (
+    <div className="order-1 md:order-2 p-8 md:p-10">
+      <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 mb-4">
+        Reset Password
+      </h2>
+
+      {/* Pink Logo centered */}
+      <div className="mb-4 flex justify-center">
+        <img
+          src={capstoneLogo}
+          alt="Capstone Logo"
+          className="block object-contain h-24 w-24 md:h-28 md:w-28"
+        />
+      </div>
+
+      {email && (
+        <p className="text-sm text-gray-600 mb-4">
+          For: <span className="font-medium">{email}</span>
+        </p>
+      )}
+
+      <form onSubmit={onSubmit} className="space-y-3">
+        {/* New password */}
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          New Password
+        </label>
+        <div className="flex items-center rounded-xl border border-gray-300 bg-white px-3 py-2 shadow-sm">
+          <input
+            type={showA ? "text" : "password"}
+            className="w-full bg-transparent text-sm outline-none placeholder:text-gray-500"
+            placeholder="Enter new password"
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            required
+            minLength={6}
+          />
+          <button
+            type="button"
+            onClick={() => setShowA((v) => !v)}
+            className="ml-2 inline-flex items-center justify-center text-gray-700"
+          >
+            {showA ? <EyeClosed className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
+
+        {/* Confirm password */}
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Confirm Password
+        </label>
+        <div className="flex items-center rounded-xl border border-gray-300 bg-white px-3 py-2 shadow-sm">
+          <input
+            type={showB ? "text" : "password"}
+            className="w-full bg-transparent text-sm outline-none placeholder:text-gray-500"
+            placeholder="Re-enter new password"
+            value={pw2}
+            onChange={(e) => setPw2(e.target.value)}
+            required
+            minLength={6}
+          />
+          <button
+            type="button"
+            onClick={() => setShowB((v) => !v)}
+            className="ml-2 inline-flex items-center justify-center text-gray-700"
+          >
+            {showB ? <EyeClosed className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
+
+        {/* Submit */}
+        <button
+          type="submit"
+          disabled={submitting}
+          className={`mt-4 flex h-11 w-full items-center justify-center rounded-xl bg-gray-900 text-white font-semibold tracking-wide transition hover:bg-black ${
+            submitting ? "cursor-not-allowed opacity-70" : "cursor-pointer"
+          }`}
+        >
+          {submitting ? "Saving..." : "Update Password"}
+        </button>
+
+        <div className="mx-auto mt-5 h-0.5 w-2/3 bg-black/80" />
+
+        <div className="mt-3 text-center">
+          <Link to="/login" className="text-sm font-medium text-gray-800 underline">
+            Back to Login
           </Link>
         </div>
-      </div>
-    );
-  }
+      </form>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[whitesmoke] px-4">
-      <div className="w-full max-w-md bg-white rounded-2xl border-2 border-[#1C1D21] shadow p-6">
-        <h1 className="text-2xl font-semibold mb-2">Set a New Password</h1>
-        {email && <p className="text-sm text-gray-600 mb-4">For: <span className="font-medium">{email}</span></p>}
-
-        <form onSubmit={onSubmit} className="space-y-3">
-          <div className="flex items-center border border-black rounded px-3">
-            <input
-              type={showA ? "text" : "password"}
-              className="flex-1 py-2 text-sm outline-none"
-              placeholder="New Password"
-              value={pw}
-              onChange={(e) => setPw(e.target.value)}
-              required
-              minLength={6}
-            />
-            <button type="button" onClick={() => setShowA((v) => !v)} className="ml-2">
-              {showA ? <EyeClosed size={18} /> : <Eye size={18} />}
-            </button>
-          </div>
-
-          <div className="flex items-center border border-black rounded px-3">
-            <input
-              type={showB ? "text" : "password"}
-              className="flex-1 py-2 text-sm outline-none"
-              placeholder="Confirm Password"
-              value={pw2}
-              onChange={(e) => setPw2(e.target.value)}
-              required
-              minLength={6}
-            />
-            <button type="button" onClick={() => setShowB((v) => !v)} className="ml-2">
-              {showB ? <EyeClosed size={18} /> : <Eye size={18} />}
-            </button>
-          </div>
-
-          {err && <div className="text-red-600 text-sm">{err}</div>}
-
-          <div className="pt-2 flex items-center justify-between">
-            <Link to="/login" className="text-sm underline text-[#494949]">Back to Login</Link>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="px-4 py-2 rounded bg-[#F2B611] text-white disabled:opacity-60"
-            >
-              {submitting ? "Saving..." : "Update Password"}
-            </button>
-          </div>
-        </form>
+    <div className="min-h-screen w-full bg-[whitesmoke] flex items-center justify-center px-4 py-10">
+      <div className="w-full max-w-5xl rounded-2xl shadow-2xl overflow-hidden bg-white grid grid-cols-1 md:grid-cols-2">
+        <LeftHero />
+        {verifying ? <RightVerifying /> : valid ? <RightForm /> : <RightInvalid />}
       </div>
     </div>
   );

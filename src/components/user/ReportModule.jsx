@@ -19,14 +19,14 @@ const ReportModule = () => {
   const [loading, setLoading] = useState(false);
 
   // Shared states
-  const [serviceType, setServiceType] = useState(''); // chosen from panels
+  const [serviceType, setServiceType] = useState('');
 
   // Facilities/Hardware states
   const [buildingName, setBuildingName] = useState('');
   const [floorLocation, setFloorLocation] = useState('');
 
   // Software states
-  const [platformName, setPlatformName] = useState(''); // e.g., LMS / SIS / school portal
+  const [platformName, setPlatformName] = useState('');
 
   // Common
   const [additionalDetails, setAdditionalDetails] = useState('');
@@ -55,6 +55,15 @@ const ReportModule = () => {
     setServiceType(type);
     resetAllFields();
   };
+  const BUILDINGS = [
+    { value: "SD", label: "SD - St. Dominic BLDG" },
+    { value: "HR", label: "HR - Holy Rosary BLDG" },
+    { value: "OLP", label: "OLP - Our Lady of Peace BLDG" },
+    { value: "SLR", label: "SLR - San Lorenzo BLDG" },
+    { value: "OLF", label: "OLF - Our Lady of Fatima BLDG" },
+    { value: "SCS", label: "SCS - St. Catherine of Siena BLDG" },
+  ];
+
 
   const handleBackToChooser = () => {
     setServiceType('');
@@ -63,21 +72,24 @@ const ReportModule = () => {
 
   const onSubmitReport = async (e) => {
     e.preventDefault();
-    const uid = localStorage.getItem('uid'); // or auth.currentUser?.uid
+    const uid = localStorage.getItem('uid');
 
-    // Validate based on service type
-    if (!serviceType || !image || !uid || !additionalDetails) {
+    // Validate requireds
+    if (!serviceType || !uid) {
+      incompleteForm();
+      return;
+    }
+    if (!image || !additionalDetails.trim()) {
       incompleteForm();
       return;
     }
     if (serviceType === SERVICE.IT_SW) {
-      if (!platformName) {
+      if (!platformName.trim()) {
         incompleteForm();
         return;
       }
     } else {
-      // Facilities/Hardware
-      if (!buildingName || !floorLocation) {
+      if (!buildingName.trim() || !floorLocation.trim()) {
         incompleteForm();
         return;
       }
@@ -96,8 +108,8 @@ const ReportModule = () => {
           ? {
             serverTimeStamp: serverTimestamp(),
             serviceType,
-            platformName,
-            additionalDetails,
+            platformName: platformName.trim(),
+            additionalDetails: additionalDetails.trim(),
             imageUrl: img,
             uid,
             status: 'Pending',
@@ -105,9 +117,9 @@ const ReportModule = () => {
           : {
             serverTimeStamp: serverTimestamp(),
             serviceType,
-            buildingName,
-            floorLocation,
-            additionalDetails,
+            buildingName: buildingName.trim(),
+            floorLocation: floorLocation.trim(),
+            additionalDetails: additionalDetails.trim(),
             imageUrl: img,
             uid,
             status: 'Pending',
@@ -115,7 +127,6 @@ const ReportModule = () => {
 
       await addDoc(reportCollectionRef, payload);
 
-      // reset
       resetAllFields();
       reportSubmitted();
     } catch (err) {
@@ -152,11 +163,69 @@ const ReportModule = () => {
     clearTimeout(timerRef.current);
   };
 
-  // Remove image
   const handleRemoveImage = () => {
     setImage(null);
     setShowFullImage(false);
   };
+
+  // Reusable image picker (Upload / Take Photo)
+  const ImagePicker = () => (
+    <div className="w-full">
+      <div className="bg-gray-200 h-40 sm:h-48 lg:h-56 w-full flex items-center justify-center rounded mb-1 overflow-hidden relative">
+        {image ? (
+          <div
+            className="h-full w-full cursor-pointer"
+            onMouseDown={handleMouseDown}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            onTouchStart={handleMouseDown}
+            onTouchEnd={handleMouseUp}
+          >
+            <img
+              src={URL.createObjectURL(image)}
+              alt="Uploaded Preview"
+              className="h-full w-full object-cover rounded"
+            />
+            <button
+              type="button"
+              onClick={handleRemoveImage}
+              className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 text-xs rounded shadow"
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col sm:flex-row gap-2 items-center justify-center">
+            {/* Upload from files */}
+            <label className="cursor-pointer px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 text-sm font-semibold text-gray-700">
+              Upload Photo
+              <input
+                onChange={(e) => setImage(e.target.files[0])}
+                type="file"
+                accept="image/*"
+                className="hidden"
+              />
+            </label>
+
+            {/* Take photo with camera */}
+            <label className="cursor-pointer px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 text-sm font-semibold text-gray-700">
+              Take Photo
+              <input
+                onChange={(e) => setImage(e.target.files[0])}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+              />
+            </label>
+          </div>
+        )}
+      </div>
+      {/* Note: file inputs can’t be “required” the usual way when hidden.
+          We enforce image requirement in onSubmitReport. */}
+      <div className="text-[11px] text-gray-500">Image is required.</div>
+    </div>
+  );
 
   // --- UI Helpers ---
   const ServiceCard = ({ title, desc, onClick }) => (
@@ -247,7 +316,7 @@ const ReportModule = () => {
         </div>
       )}
 
-      {/* Forms (conditional) */}
+      {/* Forms */}
       {serviceType && (
         <form
           onSubmit={onSubmitReport}
@@ -259,10 +328,9 @@ const ReportModule = () => {
             <div className="font-semibold">{serviceType}</div>
           </div>
 
-          {/* FIELDS */}
           {serviceType === SERVICE.IT_SW ? (
             <>
-              {/* PLATFORM / SYSTEM NAME */}
+              {/* PLATFORM / SYSTEM NAME (required) */}
               <div>
                 <label className="block text-sm font-semibold mb-1">
                   PLATFORM / SYSTEM NAME<span className="text-red-500">*</span>
@@ -273,66 +341,12 @@ const ReportModule = () => {
                   type="text"
                   placeholder="e.g., LMS (Moodle), Student Portal, DCT Schoology"
                   className="w-full border border-black rounded px-3 py-2 text-sm"
+                  required
                 />
               </div>
 
-              
-              {/* UPLOAD IMAGE */}
-              <div className="w-full">
-                <div className="bg-gray-200 h-40 sm:h-48 lg:h-56 w-full flex items-center justify-center rounded mb-1 overflow-hidden relative">
-                  {image ? (
-                    <div
-                      className="h-full w-full cursor-pointer"
-                      onMouseDown={handleMouseDown}
-                      onMouseUp={handleMouseUp}
-                      onMouseLeave={handleMouseUp}
-                      onTouchStart={handleMouseDown}
-                      onTouchEnd={handleMouseUp}
-                    >
-                      <img
-                        src={URL.createObjectURL(image)}
-                        alt="Uploaded Preview"
-                        className="h-full w-full object-cover rounded"
-                      />
-
-                      {/* Remove button */}
-                      <button
-                        type="button"
-                        onClick={handleRemoveImage}
-                        className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 text-xs rounded shadow"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-2 items-center justify-center">
-                      {/* Upload from files */}
-                      <label className="flex flex-col items-center justify-center cursor-pointer px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 text-sm font-semibold text-gray-700">
-                        Upload Photo
-                        <input
-                          onChange={(e) => setImage(e.target.files[0])}
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                        />
-                      </label>
-
-                      {/* Take photo with camera */}
-                      <label className="flex flex-col items-center justify-center cursor-pointer px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 text-sm font-semibold text-gray-700">
-                        Take Photo
-                        <input
-                          onChange={(e) => setImage(e.target.files[0])}
-                          type="file"
-                          accept="image/*"
-                          capture="environment" // 👈 forces camera on mobile (rear camera)
-                          className="hidden"
-                        />
-                      </label>
-                    </div>
-                  )}
-                </div>
-              </div>
-
+              {/* IMAGE PICKER (required via submit check) */}
+              <ImagePicker />
 
               {/* FULL IMAGE MODAL */}
               {showFullImage && image && (
@@ -348,35 +362,46 @@ const ReportModule = () => {
                 </div>
               )}
 
-              {/* OTHER DETAILS */}
+              {/* OTHER DETAILS (required) */}
               <div>
-                <label className="block text-xs text-gray-500 mb-1">OTHER DETAILS</label>
+                <label className="block text-sm font-semibold mb-1">
+                  OTHER DETAILS<span className="text-red-500">*</span>
+                </label>
                 <textarea
                   value={additionalDetails}
                   onChange={(e) => setAdditionalDetails(e.target.value)}
                   rows="3"
                   className="w-full border border-black rounded px-3 py-2 text-sm bg-gray-100"
                   placeholder="Describe the error, steps before it happened, and any error codes…"
+                  required
                 ></textarea>
               </div>
             </>
           ) : (
             <>
-              {/* BUILDING NAME */}
+              {/* BUILDING NAME (required) */}
+              {/* BUILDING NAME (required) */}
               <div>
                 <label className="block text-sm font-semibold mb-1">
                   BUILDING NAME<span className="text-red-500">*</span>
                 </label>
-                <input
+                <select
                   value={buildingName}
                   onChange={(e) => setBuildingName(e.target.value)}
-                  type="text"
-                  placeholder="Enter building name"
-                  className="w-full border border-black rounded px-3 py-2 text-sm"
-                />
+                  required
+                  className="w-full border border-black rounded px-3 py-2 text-sm bg-white"
+                >
+                  <option value="" disabled>Select building</option>
+                  {BUILDINGS.map((b) => (
+                    <option key={b.value} value={b.label}>
+                      {b.label}
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              {/* FLOOR LOCATION */}
+
+              {/* FLOOR LOCATION (required) */}
               <div>
                 <label className="block text-sm font-semibold mb-1">
                   FLOOR / ROOM LOCATION<span className="text-red-500">*</span>
@@ -387,49 +412,12 @@ const ReportModule = () => {
                   type="text"
                   placeholder="e.g., 3rd Floor, Room 305"
                   className="w-full border border-black rounded px-3 py-2 text-sm"
+                  required
                 />
               </div>
 
-              {/* UPLOAD IMAGE */}
-              <div className="w-full">
-                <div className="bg-gray-200 h-40 sm:h-48 lg:h-56 w-full flex items-center justify-center rounded mb-1 overflow-hidden relative">
-                  {image ? (
-                    <div
-                      className="h-full w-full cursor-pointer"
-                      onMouseDown={handleMouseDown}
-                      onMouseUp={handleMouseUp}
-                      onMouseLeave={handleMouseUp}
-                      onTouchStart={handleMouseDown}
-                      onTouchEnd={handleMouseUp}
-                    >
-                      <img
-                        src={URL.createObjectURL(image)}
-                        alt="Uploaded Preview"
-                        className="h-full w-full object-cover rounded"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleRemoveImage}
-                        className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 text-xs rounded shadow"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ) : (
-                    <label className="flex flex-col items-center justify-center cursor-pointer h-full w-full">
-                      <span className="text-sm font-semibold text-gray-700">
-                        UPLOAD IMAGE
-                      </span>
-                      <input
-                        onChange={(e) => setImage(e.target.files[0])}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                      />
-                    </label>
-                  )}
-                </div>
-              </div>
+              {/* IMAGE PICKER (same UI, required via submit check) */}
+              <ImagePicker />
 
               {/* FULL IMAGE MODAL */}
               {showFullImage && image && (
@@ -445,9 +433,11 @@ const ReportModule = () => {
                 </div>
               )}
 
-              {/* OTHER DETAILS */}
+              {/* OTHER DETAILS (required) */}
               <div>
-                <label className="block text-xs text-gray-500 mb-1">OTHER DETAILS</label>
+                <label className="block text-sm font-semibold mb-1">
+                  OTHER DETAILS<span className="text-red-500">*</span>
+                </label>
                 <textarea
                   value={additionalDetails}
                   onChange={(e) => setAdditionalDetails(e.target.value)}
@@ -455,6 +445,7 @@ const ReportModule = () => {
                   className="w-full border border-black rounded px-3 py-2 text-sm bg-gray-100"
                   placeholder={`Describe the issue (e.g., for ${serviceType === SERVICE.FM ? 'lighting/aircon/leak' : 'PC/peripherals/projector/network'
                     })…`}
+                  required
                 ></textarea>
               </div>
             </>
@@ -464,15 +455,16 @@ const ReportModule = () => {
           <div className="w-full flex">
             <button
               type="submit"
-              className="w-full md:w-2/3 lg:w-1/2 mx-auto bg-[#0A1936] text-white font-semibold py-3 rounded"
+              className="w-full md:w-2/3 lg:w-1/2 mx-auto bg-[#0A1936] text-white font-semibold py-3 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+              disabled={loading}
             >
-              SUBMIT
+              {loading ? 'Submitting…' : 'SUBMIT'}
             </button>
           </div>
         </form>
       )}
 
-      {/* HELP MODAL (animated) */}
+      {/* HELP MODAL */}
       {showHelp && (
         <div
           className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center"
@@ -480,10 +472,7 @@ const ReportModule = () => {
           role="dialog"
           onClick={() => setShowHelp(false)}
         >
-          {/* Backdrop */}
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"></div>
-
-          {/* Sheet / Dialog */}
           <div
             className="relative w-full sm:w-[620px] mx-auto bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl p-5 sm:p-6 translate-y-0 sm:translate-y-0 animate-[slideIn_.2s_ease-out]"
             onClick={(e) => e.stopPropagation()}
@@ -529,7 +518,6 @@ const ReportModule = () => {
             </div>
           </div>
 
-          {/* keyframes (scoped via tailwind arbitrary not available) – use utility animation name */}
           <style>{`
             @keyframes slideIn {
               from { transform: translateY(16px); opacity: 0; }
@@ -576,7 +564,6 @@ const ReportModule = () => {
           role="dialog"
           aria-label="IT HelpBot"
         >
-          {/* Panel header */}
           <div className="h-12 bg-[#0A1936] text-white px-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="inline-flex h-7 w-7 rounded-full bg-pink-600 items-center justify-center">
@@ -594,7 +581,6 @@ const ReportModule = () => {
             </button>
           </div>
 
-          {/* Chat content (fills panel) */}
           <div className="flex-1 min-h-0">
             <ChatBot embedded onClose={() => setOpenChat(false)} />
           </div>

@@ -199,7 +199,7 @@ const RequestList = () => {
       {!loading && pendingOnly.length > 0 && (
         <div className="mt-6 space-y-3">
           {pendingOnly.map((r) => (
-            <div key={r.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#0A1936] text-white px-4 py-3 rounded">
+            <div key={r.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[whitesmoke] border-2 border-[#1C1D21] text-black px-4 py-3 rounded">
               <p className="text-sm sm:text-base">
                 <span className="font-semibold">{r.userName}</span> — {r.userDept} — {formatDateTime(r.serverTimeStamp)}
               </p>
