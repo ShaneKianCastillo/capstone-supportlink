@@ -138,7 +138,7 @@ const Login = ({ setRole }) => {
             <Mail className="mr-2 h-4 w-4 text-gray-700" />
             <input
               type="email"
-              placeholder="Email..."
+              
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               onKeyDown={onKeyDown}
@@ -156,7 +156,7 @@ const Login = ({ setRole }) => {
             <Lock className="mr-2 h-4 w-4 text-gray-700" />
             <input
               type={showPassword ? "text" : "password"}
-              placeholder="Password..."
+              
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onKeyDown={onKeyDown}
