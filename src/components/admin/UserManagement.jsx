@@ -29,6 +29,7 @@ const ADMIN_LIKE_ROLES = [
   "MIS Asst. Admin",
   "CSD Asst. Admin",
   "Property Custodian",
+  "IT Support Specialist",
 ];
 const CAN_ADD_USER_ROLES = ["Admin", "MIS Admin"];
 const ASSISTANT_ROLES = ["MIS Asst. Admin", "CSD Asst. Admin"];
