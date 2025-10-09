@@ -1,6 +1,6 @@
 // src/components/auth/ForgotPassword.jsx
-import React, { useState } from "react";
-import { sendPasswordResetEmail, fetchSignInMethodsForEmail } from "firebase/auth";
+import React, { useState, useEffect } from "react";
+import { sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "../config/firebase"; // keep your existing path
 import { Link } from "react-router-dom";
 import { Mail } from "lucide-react";
@@ -13,39 +13,56 @@ const ForgotPassword = () => {
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
 
+  // Optional: one-time sanity log for the active Firebase project
+  useEffect(() => {
+    try {
+      // Helps catch “wrong project/emulator” mismatches during dev
+      // (safe in prod; it only logs)
+      // eslint-disable-next-line no-console
+      console.log("[Auth Project]", auth?.app?.options?.projectId || "(unknown)");
+    } catch {}
+  }, []);
+
   const onSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     setError("");
-    const target = email.trim();
+
+    const target = email.trim().toLowerCase();
 
     try {
-      // 1) Check if the email exists in Firebase Auth
-      const methods = await fetchSignInMethodsForEmail(auth, target);
-
-      if (!methods || methods.length === 0) {
-        setError("No account found with that email.");
-        setSubmitting(false);
-        return;
-      }
-
-      // Optional: Only allow password accounts to request a reset
-      if (!methods.includes("password")) {
-        setError("This account doesn’t use a password. Please sign in with your provider (e.g., Google).");
-        setSubmitting(false);
-        return;
-      }
-
-      // 2) Send password reset
       const actionCodeSettings = {
         url: `${window.location.origin}/reset-password`,
         handleCodeInApp: true,
       };
+
+      // Directly send reset (no pre-check with fetchSignInMethodsForEmail)
       await sendPasswordResetEmail(auth, target, actionCodeSettings);
       setDone(true);
     } catch (err) {
-      console.error("sendPasswordResetEmail:", err);
-      setError("Something went wrong. Please try again.");
+      // eslint-disable-next-line no-console
+      console.error("sendPasswordResetEmail error:", err, {
+        code: err?.code,
+        projectId: auth?.app?.options?.projectId,
+      });
+
+      if (err?.code === "auth/user-not-found") {
+        setError("No account found with that email.");
+      } else if (err?.code === "auth/invalid-email") {
+        setError("Please enter a valid email address.");
+      } else if (
+        err?.code === "auth/unauthorized-continue-uri" ||
+        err?.code === "auth/missing-continue-uri" ||
+        err?.code === "auth/invalid-continue-uri"
+      ) {
+        setError(
+          "Your reset URL isn’t authorized. Add this domain to Firebase Auth → Authorized domains."
+        );
+      } else if (err?.code === "auth/network-request-failed") {
+        setError("Network error. Check your internet connection and try again.");
+      } else {
+        setError("Something went wrong. Please try again.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -77,7 +94,7 @@ const ForgotPassword = () => {
 
         {/* RIGHT: form side */}
         <div className="order-1 md:order-2 p-8 md:p-10">
-          <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 mb-4">
+          <h2 className="text-2xl md:3xl font-extrabold text-gray-900 mb-4">
             Reset Password
           </h2>
 
