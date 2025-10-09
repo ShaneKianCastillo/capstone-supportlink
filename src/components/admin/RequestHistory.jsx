@@ -1,3 +1,4 @@
+// src/components/custodian/RequestHistory.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { ArrowDown } from "lucide-react";
 import { db } from "../../config/firebase";
@@ -22,6 +23,22 @@ const RequestHistory = () => {
   const [reqList, setReqList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]   = useState(null);
+
+  // full-screen image preview
+  const [imgPreviewUrl, setImgPreviewUrl] = useState(null);
+  const openPreview = (url) => url && setImgPreviewUrl(url);
+  const closePreview = () => setImgPreviewUrl(null);
+
+  // EDIT MODAL state (for Pending + owner)
+  const [editOpen, setEditOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editReq, setEditReq] = useState(null);
+  const [assetName, setAssetName] = useState("");
+  const [reason, setReason] = useState("");
+  const [currentImageUrl, setCurrentImageUrl] = useState("");
+  const [newImageFile, setNewImageFile] = useState(null);
+  const fileInputId = "asset-edit-upload";
+  const cameraInputId = "asset-edit-camera";
 
   // filter
   const [statusFilter, setStatusFilter] = useState("All");
@@ -94,7 +111,6 @@ const RequestHistory = () => {
       return;
     }
 
-    // Fetch all requests for these uids
     if (allowedUids.length === 1) {
       qRef = query(baseRef, where("uid", "==", allowedUids[0]));
     } else {
@@ -106,7 +122,6 @@ const RequestHistory = () => {
       (snap) => {
         const rows = snap.docs
           .map((d) => ({ id: d.id, ...d.data() }))
-          // hide ones the admin removed (soft hide)
           .filter((r) => !r.hiddenForAdmin);
 
         rows.sort((a, b) => {
@@ -234,13 +249,11 @@ const RequestHistory = () => {
         didOpen: () => Swal.showLoading(),
       });
 
-      // Has the user already removed it?
       const hideId = `${req.uid}_${req.id}`;
       const hideRef = doc(db, "userAssetHides", hideId);
       const hideSnap = await getDoc(hideRef);
 
       if (hideSnap.exists()) {
-        // both sides removed -> HARD DELETE
         await deleteDoc(doc(db, "assetRequests", req.id));
         Swal.close();
         await Swal.fire({
@@ -251,7 +264,6 @@ const RequestHistory = () => {
           showConfirmButton: false,
         });
       } else {
-        // admin soft-hide
         await setDoc(
           doc(db, "assetRequests", req.id),
           {
@@ -282,6 +294,110 @@ const RequestHistory = () => {
     const isApprovedOrDeclined = s === "approved" || s === "declined";
     const isAdmin = myRole === "MIS Admin" || myRole === "CSD Admin";
     return isApprovedOrDeclined && isAdmin;
+  };
+
+  // ---------- EDIT helpers ----------
+  const openEdit = (req) => {
+    setEditReq(req);
+    setAssetName(req.assetName || "");
+    setReason(req.reason || "");
+    setCurrentImageUrl(req.imageUrl || "");
+    setNewImageFile(null);
+    setEditOpen(true);
+  };
+
+  const closeEdit = () => {
+    if (saving) return;
+    setEditOpen(false);
+    setEditReq(null);
+    setNewImageFile(null);
+  };
+
+  const validateEdit = () => {
+    if (!assetName.trim()) return "Please enter the Asset Name.";
+    if (!reason.trim()) return "Please enter the Reason for Using.";
+    if (!(newImageFile || currentImageUrl)) return "Please attach an image.";
+    return null;
+  };
+
+  const uploadToCloudinary = async (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", "supportlink"); // same preset you use elsewhere
+    try {
+      const res = await fetch("https://api.cloudinary.com/v1_1/dsycysb0e/image/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (data?.secure_url) return data.secure_url;
+      throw new Error("Upload failed");
+    } catch (e) {
+      console.error("[RequestHistory] upload error:", e);
+      return null;
+    }
+  };
+
+  const saveEdit = async () => {
+    if (!editReq?.id) return;
+    const err = validateEdit();
+    if (err) {
+      await Swal.fire("Missing info", err, "info");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      Swal.fire({
+        title: "Saving...",
+        allowOutsideClick: false,
+        showConfirmButton: false,
+        didOpen: () => Swal.showLoading(),
+      });
+
+      let finalImageUrl = currentImageUrl;
+      if (newImageFile) {
+        const uploaded = await uploadToCloudinary(newImageFile);
+        if (!uploaded) {
+          Swal.close();
+          await Swal.fire("Upload failed", "Could not upload the image. Try again.", "error");
+          setSaving(false);
+          return;
+        }
+        finalImageUrl = uploaded;
+      }
+
+      const updatePayload = {
+        assetName: assetName.trim(),
+        reason: reason.trim(),
+        imageUrl: finalImageUrl || "",
+        lastEditedAt: serverTimestamp(),
+      };
+
+      await updateDoc(doc(db, "assetRequests", editReq.id), updatePayload);
+
+      Swal.close();
+      await Swal.fire({
+        title: "Updated",
+        text: "Your request has been updated.",
+        icon: "success",
+        timer: 1200,
+        showConfirmButton: false,
+      });
+
+      // Optimistic local update
+      setReqList((prev) =>
+        prev.map((r) => (r.id === editReq.id ? { ...r, ...updatePayload } : r))
+      );
+
+      closeEdit();
+    } catch (e) {
+      console.error("[RequestHistory] saveEdit error:", e);
+      Swal.close();
+      Swal.fire("Error", "Failed to update the request.", "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -343,6 +459,10 @@ const RequestHistory = () => {
           !error &&
           pageItems.map((req, index) => {
             const globalIndex = startIdx + index;
+            const isPending = (req.status || "").toLowerCase() === "pending";
+            const isOwner = req.uid === uid;
+            const isEditable = isPending && isOwner;
+
             return (
               <div key={req.id} className="w-full rounded overflow-hidden mb-4">
                 {/* Header */}
@@ -382,12 +502,13 @@ const RequestHistory = () => {
                       </p>
                     </div>
 
-                    {/* Thumbnail */}
+                    {/* Thumbnail (click to full preview) */}
                     <div className="bg-[#0A1936] p-2 rounded shrink-0">
                       <img
                         src={req.imageUrl || ""}
                         alt="Asset"
-                        className="h-[70px] w-[100px] object-cover rounded"
+                        className="h-[70px] w-[100px] object-cover rounded cursor-pointer"
+                        onClick={() => openPreview(req.imageUrl)}
                       />
                     </div>
                   </div>
@@ -415,6 +536,18 @@ const RequestHistory = () => {
                   {canRemove(req) && (
                     <div className="flex justify-center bg-red-600 mt-3 py-2 rounded text-white cursor-pointer hover:bg-red-700">
                       <button onClick={() => removeAsAdmin(req)}>Remove Request</button>
+                    </div>
+                  )}
+
+                  {/* Edit (Pending + owner) */}
+                  {isEditable && (
+                    <div className="mt-3 flex justify-center">
+                      <button
+                        className="px-4 py-2 rounded bg-[#0A1936] text-white font-semibold hover:bg-[#122751]"
+                        onClick={() => openEdit(req)}
+                      >
+                        Edit Request
+                      </button>
                     </div>
                   )}
                 </div>
@@ -461,6 +594,136 @@ const RequestHistory = () => {
           </div>
         )}
       </div>
+
+      {/* Full-screen image preview overlay */}
+      {imgPreviewUrl && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center"
+          onClick={closePreview}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => (e.key === "Escape" ? closePreview() : null)}
+        >
+          <img
+            src={imgPreviewUrl}
+            alt="Preview"
+            className="max-h-[90%] max-w-[90%] rounded shadow-2xl"
+          />
+        </div>
+      )}
+
+      {/* ---------- EDIT MODAL (Pending + owner) ---------- */}
+      {editOpen && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={closeEdit} />
+          <div className="relative bg-white w-full max-w-lg rounded-2xl shadow-xl p-5">
+            <h3 className="text-lg font-semibold mb-3">Edit Request</h3>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-semibold mb-1">Asset Name</label>
+                <input
+                  type="text"
+                  value={assetName}
+                  onChange={(e) => setAssetName(e.target.value)}
+                  className="w-full border border-black rounded px-3 py-2 text-sm"
+                  placeholder="Enter asset name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">Reason for Using</label>
+                <textarea
+                  rows={3}
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  className="w-full border border-black rounded px-3 py-2 text-sm"
+                  placeholder="Describe why you need this asset..."
+                />
+              </div>
+
+              {/* Image picker */}
+              <div>
+                <label className="block text-sm font-semibold mb-1">Image</label>
+                <div className="flex items-center gap-3">
+                  <div className="bg-[#0A1936] p-2 rounded">
+                    <img
+                      src={newImageFile ? URL.createObjectURL(newImageFile) : currentImageUrl || ""}
+                      alt="Preview"
+                      className="h-[70px] w-[100px] object-cover rounded"
+                    />
+                  </div>
+                  {newImageFile && (
+                    <button
+                      type="button"
+                      onClick={() => setNewImageFile(null)}
+                      className="text-sm underline"
+                    >
+                      Remove new image
+                    </button>
+                  )}
+                </div>
+
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById(fileInputId)?.click()}
+                    className="px-3 py-2 rounded border text-sm hover:bg-gray-50"
+                  >
+                    Upload Photo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById(cameraInputId)?.click()}
+                    className="px-3 py-2 rounded border text-sm hover:bg-gray-50"
+                  >
+                    Take Photo
+                  </button>
+
+                  <input
+                    id={fileInputId}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) setNewImageFile(f);
+                    }}
+                  />
+                  <input
+                    id={cameraInputId}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) setNewImageFile(f);
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                className="px-4 py-2 rounded border hover:bg-gray-50"
+                onClick={closeEdit}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded bg-[#0A1936] text-white font-semibold hover:bg-[#122751] disabled:opacity-60"
+                onClick={saveEdit}
+                disabled={saving}
+              >
+                {saving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

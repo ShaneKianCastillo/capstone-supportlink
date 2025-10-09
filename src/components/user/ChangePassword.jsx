@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+// src/components/custodian/ChangePassword.jsx
+import React, { useState, useEffect } from "react";
 import { Eye, EyeClosed, X } from "lucide-react";
 import { auth } from "../../config/firebase";
 import {
@@ -6,44 +7,66 @@ import {
   reauthenticateWithCredential,
   updatePassword,
 } from "firebase/auth";
-import { attemptOverload, changePasswordFailed, incompleteForm, uniquePassword, loginRequires, passwordIncorrect, passwordLength, passwordMismatch, passwordUpdated } from "../../js/login";
+import {
+  attemptOverload,
+  changePasswordFailed,
+  incompleteForm,
+  uniquePassword,
+  loginRequires,
+  passwordIncorrect,
+  passwordLength,
+  passwordMismatch,
+  passwordUpdated
+} from "../../js/login";
+
 const ChangePassword = ({ open, setOpen }) => {
   const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
+  const [newPassword, setNewPassword]         = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew, setShowNew] = useState(false);
+  const [showNew, setShowNew]         = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
   const [saving, setSaving] = useState(false);
 
+  // 🔁 Reset fields & visibility whenever the modal opens
+  useEffect(() => {
+    if (open) {
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setShowCurrent(false);
+      setShowNew(false);
+      setShowConfirm(false);
+    }
+  }, [open]);
+
+  // Centralized close that also resets (in case you call it directly)
+  const handleClose = () => {
+    if (saving) return;
+    setOpen(false);
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setShowCurrent(false);
+    setShowNew(false);
+    setShowConfirm(false);
+  };
+
   if (!open) return null;
 
   const toggleCurrent = () => setShowCurrent((v) => !v);
-  const toggleNew =     () => setShowNew((v) => !v);
+  const toggleNew     = () => setShowNew((v) => !v);
   const toggleConfirm = () => setShowConfirm((v) => !v);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      incompleteForm();
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      passwordMismatch();
-      return;
-    }
-    if (newPassword === currentPassword) {
-      uniquePassword();
-      return;
-    }
-    if (newPassword.length < 6) {
-      // adjust rule if you have stronger requirements
-      passwordLength();
-      return;
-    }
+    if (!currentPassword || !newPassword || !confirmPassword) return incompleteForm();
+    if (newPassword !== confirmPassword) return passwordMismatch();
+    if (newPassword === currentPassword) return uniquePassword();
+    if (newPassword.length < 6) return passwordLength();
 
     try {
       setSaving(true);
@@ -53,31 +76,24 @@ const ChangePassword = ({ open, setOpen }) => {
         return;
       }
 
-      // 1) Re-authenticate with the current password
+      // 1) Re-authenticate
       const cred = EmailAuthProvider.credential(user.email, currentPassword);
       await reauthenticateWithCredential(user, cred);
 
       // 2) Update password
       await updatePassword(user, newPassword);
 
-      passwordUpdated(); // show success alert
-      setOpen(false);
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
+      passwordUpdated();
+
+      // ✅ Close & reset after success
+      handleClose();
     } catch (err) {
       console.error("Change password error:", err);
-      // Friendly error messages
       const msg = String(err?.code || err?.message || err);
-      if (msg.includes("auth/wrong-password")) {
-        passwordIncorrect();
-      } else if (msg.includes("auth/too-many-requests")) {
-        attemptOverload();
-      } else if (msg.includes("auth/requires-recent-login")) {
-        loginRequires();
-      } else {
-        changePasswordFailed();
-      }
+      if (msg.includes("auth/wrong-password"))       passwordIncorrect();
+      else if (msg.includes("auth/too-many-requests")) attemptOverload();
+      else if (msg.includes("auth/requires-recent-login")) loginRequires();
+      else changePasswordFailed();
     } finally {
       setSaving(false);
     }
@@ -86,10 +102,7 @@ const ChangePassword = ({ open, setOpen }) => {
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50 pt-10">
       {/* Backdrop */}
-      <div
-        onClick={() => !saving && setOpen(false)}
-        className="absolute inset-0 bg-black opacity-50"
-      />
+      <div onClick={handleClose} className="absolute inset-0 bg-black opacity-50" />
 
       {/* Modal */}
       <div
@@ -98,7 +111,7 @@ const ChangePassword = ({ open, setOpen }) => {
       >
         {/* Close */}
         <button
-          onClick={() => !saving && setOpen(false)}
+          onClick={handleClose}
           className="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
           disabled={saving}
         >
@@ -195,14 +208,12 @@ const ChangePassword = ({ open, setOpen }) => {
       </div>
 
       {/* Slide animation */}
-      <style>
-        {`
-          @keyframes slideIn {
-            from { opacity: 0; transform: translateY(-50px); }
-            to   { opacity: 1; transform: translateY(0); }
-          }
-        `}
-      </style>
+      <style>{`
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateY(-50px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
 
       {/* Saving overlay */}
       {saving && (

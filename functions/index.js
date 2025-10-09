@@ -1,73 +1,62 @@
-// functions/index.js
+/* eslint-disable require-jsdoc, max-len */
 const admin = require("firebase-admin");
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { setGlobalOptions, logger } = require("firebase-functions/v2");
+const { getMessaging } = require("firebase-admin/messaging");
 
 admin.initializeApp();
-const db = admin.firestore();
+setGlobalOptions({ region: "asia-southeast1" });
 
-exports.emailOnNewAssetRequest = onDocumentCreated(
-  "assetRequests/{requestId}",
-  async (event) => {
-    const snap = event.data;
-    if (!snap) return;
-    const r = snap.data();
-    const requestId = event.params.requestId;
+/**
+ * Trigger: send push notifications to all Property Custodians
+ * when a new asset request is created.
+ */
+exports.sendCustodianNotification = onDocumentCreated("assetRequests/{requestId}", async (event) => {
+  const data = event.data?.data() || {};
+  const db = admin.firestore();
 
-    // Find the Property Custodian user (by role)
+  try {
+    // Get all custodians
     const usersSnap = await db
       .collection("users")
       .where("role", "==", "Property Custodian")
-      .limit(1)
       .get();
 
     if (usersSnap.empty) {
-      console.log("No Property Custodian user found; skipping email.");
+      logger.info("No custodians found for FCM notification.");
       return;
     }
 
-    const custodian = usersSnap.docs[0].data();
-    const toEmail = custodian.email;
-    if (!toEmail) {
-      console.log("Custodian user has no email; skipping email.");
-      return;
-    }
-
-    // Optionally enrich from users/{uid}
-    let userName = r.userName || "—";
-    let userDept = r.userDept || "—";
-    if ((!r.userName || !r.userDept) && r.uid) {
-      try {
-        const uSnap = await db.doc(`users/${r.uid}`).get();
-        if (uSnap.exists) {
-          const u = uSnap.data() || {};
-          userName = u.name || userName;
-          userDept = u.department || userDept;
-        }
-      } catch (e) {
-        console.warn("Failed to fetch requester profile:", e);
-      }
-    }
-
-    const createdAt = r.serverTimeStamp?.toDate?.()?.toLocaleString?.() || "—";
-
-    const html = `
-      <div style="font-family:system-ui,Segoe UI,Roboto,Arial">
-        <h2>New Asset Request</h2>
-        <p><strong>From:</strong> ${userName}</p>
-        <p><strong>Department:</strong> ${userDept}</p>
-        <p><strong>Submitted:</strong> ${createdAt}</p>
-        <hr/>
-        <p><strong>Asset Name:</strong> ${r.assetName || "—"}</p>
-        <p><strong>Reason:</strong> ${r.reason || "—"}</p>
-        ${r.imageUrl ? `<p><strong>Image:</strong> <a href="${r.imageUrl}">View</a></p>` : ""}
-        <p><strong>Request ID:</strong> ${requestId}</p>
-      </div>
-    `;
-
-    // Write a mail doc that the SMTP Trigger Email extension will send
-    await db.collection("mail").add({
-      to: toEmail,
-      message: { subject: "New Asset Request Submitted", html },
+    // Gather tokens
+    const tokens = [];
+    usersSnap.forEach((doc) => {
+      const fcmTokens = doc.data().fcmTokens || {};
+      tokens.push(...Object.keys(fcmTokens));
     });
+
+    if (!tokens.length) {
+      logger.info("No FCM tokens found.");
+      return;
+    }
+
+    // Build payload
+    const payload = {
+      notification: {
+        title: "New Asset Request",
+        body: `${data.userName || "Someone"} requested ${data.assetName || "an asset"}.`,
+        icon: "/icons/icon-192.png",
+      },
+      webpush: {
+        fcmOptions: {
+          link: "https://dct-supportlink.web.app/custodian", // adjust if needed
+        },
+      },
+    };
+
+    // Send
+    const resp = await getMessaging().sendEachForMulticast({ tokens, ...payload });
+    logger.info(`Sent ${resp.successCount} notifications; ${resp.failureCount} failed.`);
+  } catch (err) {
+    logger.error("FCM push send error:", err);
   }
-);
+});

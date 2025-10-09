@@ -98,8 +98,7 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
             .map((d) => ({ id: d.id, ...d.data() }))
             .filter((r) => !r.hiddenForAdmin);
 
-          // 🔒 ONLY include records that the user (reporter) has approved
-          // userApprovalStatus: 'approved' | 'pending' | 'declined'
+          // include only user-approved resolutions
           data = data.filter(
             (r) => (r.userApprovalStatus || "").toLowerCase() === "approved"
           );
@@ -130,7 +129,7 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
               b.resolvedAt?.toMillis?.() ??
               b.serverTimeStamp?.toMillis?.() ??
               0;
-            return ta - tb; // oldest → newest for readable records
+            return ta - tb; // oldest → newest
           });
         } else {
           const snap = await getDocs(query(collection(db, "assetRequests")));
@@ -172,6 +171,29 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
             return ta - tb;
           });
         }
+
+        // 🔹 ENRICH WITH USER METADATA (name & department) FOR RELIABLE DISPLAY
+        // This ensures Property Custodian pages (and tables) always show a requester/admin name.
+        const usersSnap = await getDocs(query(collection(db, "users")));
+        const usersById = {};
+        usersSnap.forEach((d) => {
+          const u = d.data() || {};
+          usersById[d.id] = {
+            name: u.name || "",
+            department: u.department || "",
+          };
+        });
+
+        data = data.map((r) => {
+          const u = usersById[r.uid] || {};
+          return {
+            ...r,
+            userName: r.userName || u.name || "",
+            userDept: r.userDept || u.department || "",
+            requesterName: r.requesterName || u.name || "",
+            requesterDept: r.requesterDept || u.department || "",
+          };
+        });
 
         if (!isMounted) return;
         setRows(data);
@@ -295,7 +317,7 @@ const Download = ({ open, onClose, context = "resolved", role = "", uid = "" }) 
               <div className="text-lg font-semibold">{printableTitle}</div>
             </div>
 
-            {/* Actions: column on mobile, row on sm+ */}
+            {/* Actions */}
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
               <SettingsMenu
                 mode={mode}
@@ -530,14 +552,19 @@ const SettingsPanel = ({
 const PdfHeader = () => {
   return (
     <div className="mb-3">
-      <div className="relative flex items-center">
-        {/* Logo kept at the far left, text remains centered across full width */}
-        <img
-          src={dctLogo}
-          alt="DCT Logo"
-          className="h-20 w-20 object-contain absolute left-0 top-1/2 -translate-y-1/2"
-        />
-        <div className="w-full text-center leading-tight">
+      {/* 3-column grid keeps center perfectly centered in canvas/PDF */}
+      <div className="grid grid-cols-[100px_1fr_100px] items-center gap-2">
+        {/* Left: fixed logo */}
+        <div className="flex justify-start">
+          <img
+            src={dctLogo}
+            alt="DCT Logo"
+            className="h-20 w-20 object-contain"
+          />
+        </div>
+
+        {/* Center: institution text */}
+        <div className="text-center leading-tight">
           <div className="text-[15px] tracking-wide font-bold uppercase">
             Dominican College of Tarlac, Inc.
           </div>
@@ -552,7 +579,11 @@ const PdfHeader = () => {
             E-mail: domct_2315@yahoo.com.ph / domct_2315@dct.edu.ph
           </div>
         </div>
+
+        {/* Right: empty spacer to balance the grid */}
+        <div />
       </div>
+
       <div className="mt-2 border-b-2 border-black" />
     </div>
   );
@@ -699,6 +730,7 @@ const RequestPage = ({ r, formatDateTime, imgClick }) => {
       </div>
 
       <div className="text-sm text-gray-700">
+        {/* requesterName / userName are guaranteed via enrichment */}
         <span className="font-semibold">{r.requesterName || r.userName || "—"}</span>
         <span className="text-gray-400"> • </span>
         <span>{r.requesterDept || r.userDept || "—"}</span>

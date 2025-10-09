@@ -1,3 +1,4 @@
+// src/components/propertycustodian/CustodianLayout.jsx
 import React, { useEffect, useState } from "react";
 
 import {
@@ -14,12 +15,16 @@ import RequestLog from "./RequestLog";
 import ChangePassword from "../user/ChangePassword";
 import capstoneLogo from "../../assets/capstoneLogo.png";
 
-import { auth } from "../../config/firebase";
+import { auth, db } from "../../config/firebase";
 import { signOut } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 
-import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "../../config/firebase";
+import {
+  doc,
+  onSnapshot,
+  collection,
+  query,
+} from "firebase/firestore";
 
 const SIDEBAR_W = "w-64";
 const HEADER_H = "h-20";
@@ -32,6 +37,10 @@ const CustodianLayout = ({ setRole }) => {
 
   const [profile, setProfile] = useState({ name: "", role: "" });
 
+  // 🔴 pending requests badge
+  const [pendingCount, setPendingCount] = useState(0);
+
+  // Load profile (name/role)
   useEffect(() => {
     const uid = localStorage.getItem("uid");
     if (!uid) return;
@@ -44,6 +53,24 @@ const CustodianLayout = ({ setRole }) => {
         });
       }
     });
+    return () => unsub();
+  }, []);
+
+  // Listen for pending asset requests and update badge
+  useEffect(() => {
+    const q = query(collection(db, "assetRequests"));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        let n = 0;
+        snap.forEach((d) => {
+          const s = (d.data()?.status || "Pending").toString().toLowerCase();
+          if (s === "pending") n++;
+        });
+        setPendingCount(n);
+      },
+      () => setPendingCount(0)
+    );
     return () => unsub();
   }, []);
 
@@ -81,7 +108,7 @@ const CustodianLayout = ({ setRole }) => {
   const navLinkClass = (active) =>
     [
       "relative z-0 block w-full text-left px-4 py-2 rounded-md",
-      "flex items-center gap-2",
+      "flex items-center gap-2 justify-between", // ⬅ push badge to the right
       "text-gray-900 transition-colors duration-200",
       "hover:text-white",
       active ? "text-white" : "",
@@ -105,6 +132,17 @@ const CustodianLayout = ({ setRole }) => {
     "hover:before:scale-x-100 before:-z-10",
     "focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300",
   ].join(" ");
+
+  // Small red badge component
+  const Badge = ({ count }) =>
+    count > 0 ? (
+      <span
+        aria-label={`${count} pending request${count > 1 ? "s" : ""}`}
+        className="ml-3 inline-flex items-center justify-center rounded-full bg-red-600 text-white text-[11px] font-bold min-w-[1.25rem] h-5 px-1 shadow-sm"
+      >
+        {count > 99 ? "99+" : count}
+      </span>
+    ) : null;
 
   return (
     <div className="relative min-h-screen bg-white">
@@ -134,7 +172,7 @@ const CustodianLayout = ({ setRole }) => {
           {/* Top: Logo + close (mobile) */}
           <div className="flex items-center justify-center relative px-4 pt-4 pb-3 flex-shrink-0">
             <img src={capstoneLogo} alt="logo" className="h-20 w-auto drop-shadow" />
-            
+
             <button
               onClick={() => setIsSidebarOpen(false)}
               className="absolute right-3 top-3 text-gray-600 hover:text-gray-800 lg:hidden"
@@ -152,7 +190,11 @@ const CustodianLayout = ({ setRole }) => {
                   onClick={() => navigateTo("request-list")}
                   className={navLinkClass(currentView === "request-list")}
                 >
-                  <Package /> <span className="text-lg font-semibold">Requested Asset</span>
+                  <span className="flex items-center gap-2">
+                    <Package />
+                    <span className="text-lg font-semibold">Requested Asset</span>
+                  </span>
+                  <Badge count={pendingCount} />
                 </button>
               </li>
 
@@ -161,7 +203,10 @@ const CustodianLayout = ({ setRole }) => {
                   onClick={() => navigateTo("request-log")}
                   className={navLinkClass(currentView === "request-log")}
                 >
-                  <History /> <span className="text-lg font-semibold">Request History</span>
+                  <span className="flex items-center gap-2">
+                    <History />
+                    <span className="text-lg font-semibold">Request History</span>
+                  </span>
                 </button>
               </li>
 
@@ -174,7 +219,10 @@ const CustodianLayout = ({ setRole }) => {
                   }}
                   className={navLinkClass(currentView === "password")}
                 >
-                  <Lock /> <span className="text-lg font-semibold">Change Password</span>
+                  <span className="flex items-center gap-2">
+                    <Lock />
+                    <span className="text-lg font-semibold">Change Password</span>
+                  </span>
                 </button>
               </li>
             </ul>
@@ -211,7 +259,7 @@ const CustodianLayout = ({ setRole }) => {
       {/* Header (no logo) */}
       <header
         className={`
-          fixed top-0 left-0 right-0 ${HEADER_H} bg-[whitesmoke] z-40 lg:ml-64
+          fixed top-0 left-0 right-0 ${HEADER_H} bg-[whitesmoke] lg:ml-64
           border-b border-gray-200 shadow-sm
         `}
       >
@@ -225,12 +273,12 @@ const CustodianLayout = ({ setRole }) => {
           </button>
 
           <h1 className="text-gray-900 text-xl font-semibold lg:text-2xl">
-            {currentView === "request-list" && "Request Asset"}
+            {currentView === "request-list" && "Requested Asset"}
             {currentView === "request-log" && "Request History"}
             {currentView === "password" && "Change Password"}
           </h1>
 
-        {/* spacer keeps title centered */}
+          {/* spacer keeps title centered */}
           <div className="w-6" />
         </div>
       </header>

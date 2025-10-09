@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+// src/components/custodian/AddUser.jsx
+import React, { useEffect, useState } from "react";
 import { Eye, EyeClosed, X } from "lucide-react";
 import { auth, db } from "../../config/firebase";
 import { createUserWithEmailAndPassword } from "firebase/auth";
@@ -33,9 +34,34 @@ const AddUser = ({ open, setOpen }) => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  const togglePasswordVisibility = () => setShowPassword(!showPassword);
+  // loading overlay
+  const [saving, setSaving] = useState(false);
+
+  const resetAll = () => {
+    setEmail("");
+    setName("");
+    setRole("");
+    setDepartment("");
+    setPassword("");
+    setConfirmPassword("");
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+  };
+
+  // Reset on open so fields/toggles don't persist between sessions
+  useEffect(() => {
+    if (open) resetAll();
+  }, [open]);
+
+  const handleClose = () => {
+    if (saving) return;
+    resetAll();
+    setOpen(false);
+  };
+
+  const togglePasswordVisibility = () => setShowPassword((v) => !v);
   const toggleConfirmPasswordVisibility = () =>
-    setShowConfirmPassword(!showConfirmPassword);
+    setShowConfirmPassword((v) => !v);
 
   if (!open) return null;
 
@@ -48,6 +74,8 @@ const AddUser = ({ open, setOpen }) => {
     }
 
     try {
+      setSaving(true);
+
       // 🔎 Uniqueness check BEFORE creating the Auth user
       if (UNIQUE_ROLES.includes(role)) {
         const q = query(
@@ -66,6 +94,7 @@ const AddUser = ({ open, setOpen }) => {
               `MIS Admins can be duplicated for handover, but not ${role}.`,
             confirmButtonColor: "#111827",
           });
+          setSaving(false);
           return;
         }
       }
@@ -90,7 +119,9 @@ const AddUser = ({ open, setOpen }) => {
       });
 
       accountCreated();
-      setOpen(false);
+
+      // ✅ Close and clear everything
+      handleClose();
     } catch (error) {
       console.error("Error signing up:", error);
       await Swal.fire({
@@ -99,6 +130,8 @@ const AddUser = ({ open, setOpen }) => {
         text: error?.message || "Please try again.",
         confirmButtonColor: "#111827",
       });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -106,9 +139,9 @@ const AddUser = ({ open, setOpen }) => {
     <div className="fixed inset-0 flex items-center justify-center z-50 pt-10">
       {/* Backdrop */}
       <div
-        onClick={() => setOpen(false)}
+        onClick={handleClose}
         className="absolute inset-0 bg-black opacity-50"
-      ></div>
+      />
 
       {/* Modal */}
       <div
@@ -117,36 +150,43 @@ const AddUser = ({ open, setOpen }) => {
       >
         {/* Close button */}
         <button
-          onClick={() => setOpen(false)}
+          onClick={handleClose}
           className="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
           aria-label="Close"
+          disabled={saving}
         >
           <X size={20} />
         </button>
 
         <h2 className="text-xl font-bold mb-4">Add New User</h2>
+
         <form className="flex flex-col gap-3" onSubmit={signIn}>
           <input
+            value={email}
             onChange={(e) => setEmail(e.target.value)}
             type="email"
             placeholder="Email"
             className="border-black border p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
             required
+            disabled={saving}
           />
           <input
+            value={name}
             onChange={(e) => setName(e.target.value)}
             type="text"
             placeholder="Name"
             className="border-black border p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
             required
+            disabled={saving}
           />
 
           {/* Role (Dropdown) */}
           <select
             value={role}
             onChange={(e) => setRole(e.target.value)}
-            className="border-black border p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="border-black border p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
             required
+            disabled={saving}
           >
             <option value="" disabled>
               Select a role
@@ -161,28 +201,33 @@ const AddUser = ({ open, setOpen }) => {
           </select>
 
           <input
+            value={department}
             onChange={(e) => setDepartment(e.target.value)}
             type="text"
             placeholder="Department"
             className="border-black border p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
             required
+            disabled={saving}
           />
 
           {/* Password */}
           <div className="flex items-center border-black border p-2 rounded-lg focus-within:ring-2 focus-within:ring-blue-400">
             <input
+              value={password}
               onChange={(e) => setPassword(e.target.value)}
               type={showPassword ? "text" : "password"}
               placeholder="Password"
               className="flex-1 outline-none"
               required
               minLength={6}
+              disabled={saving}
             />
             <button
               type="button"
               onClick={togglePasswordVisibility}
               className="focus:outline-none ml-2"
               aria-label={showPassword ? "Hide password" : "Show password"}
+              disabled={saving}
             >
               {showPassword ? <EyeClosed size={18} /> : <Eye size={18} />}
             </button>
@@ -191,18 +236,21 @@ const AddUser = ({ open, setOpen }) => {
           {/* Confirm Password */}
           <div className="flex items-center border-black border p-2 rounded-lg focus-within:ring-2 focus-within:ring-blue-400">
             <input
+              value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               type={showConfirmPassword ? "text" : "password"}
               placeholder="Confirm Password"
               className="flex-1 outline-none"
               required
               minLength={6}
+              disabled={saving}
             />
             <button
               type="button"
               onClick={toggleConfirmPasswordVisibility}
               className="focus:outline-none ml-2"
               aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+              disabled={saving}
             >
               {showConfirmPassword ? <EyeClosed size={18} /> : <Eye size={18} />}
             </button>
@@ -212,16 +260,18 @@ const AddUser = ({ open, setOpen }) => {
           <div className="flex justify-end gap-2 mt-4">
             <button
               type="button"
-              onClick={() => setOpen(false)}
-              className="px-4 py-2 rounded-lg border-black border bg-[#0A1936] text-white cursor-pointer transition-colors"
+              onClick={handleClose}
+              className="px-4 py-2 rounded-lg border-black border bg-[#0A1936] text-white cursor-pointer transition-colors disabled:opacity-60"
+              disabled={saving}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 rounded-lg bg-[#F2B611] text-white transition-colors"
+              className="px-4 py-2 rounded-lg bg-[#F2B611] text-white transition-colors disabled:opacity-60"
+              disabled={saving}
             >
-              Add User
+              {saving ? "Adding User…" : "Add User"}
             </button>
           </div>
         </form>
@@ -234,6 +284,18 @@ const AddUser = ({ open, setOpen }) => {
           to   { opacity: 1; transform: translateY(0); }
         }
       `}</style>
+
+      {/* Loading overlay (matches your ReportModule style) */}
+      {saving && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-[60]">
+          <div className="bg-white p-6 rounded-lg shadow-lg text-center">
+            <p className="text-lg font-semibold">Creating account...</p>
+            <div className="mt-3">
+              <div className="animate-spin h-6 w-6 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

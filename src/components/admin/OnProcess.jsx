@@ -1,3 +1,4 @@
+// src/components/custodian/OnProcess.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { X, User } from "lucide-react";
 import { db } from "../../config/firebase";
@@ -28,6 +29,29 @@ const OnProcess = () => {
     return () => window.removeEventListener("storage", sync);
   }, []);
 
+  // ------- VIEW MODE (same idea as SentReports) -------
+  const VIEW = { FM: "FM", HW: "HW", SW: "SW" };
+  const viewModeFor = (role, serviceType) => {
+    switch (role) {
+      case "CSD Admin":
+      case "CSD Asst. Admin":
+        return VIEW.FM;
+      case "IT Support Specialist":
+        return VIEW.HW;
+      case "MIS Admin":
+      case "MIS Asst. Admin":
+        return VIEW.SW;
+      case "Admin":
+        if (serviceType === "Facilities and Maintenance") return VIEW.FM;
+        if (serviceType === "IT Support Services - Hardware") return VIEW.HW;
+        return VIEW.SW; // Software
+      default:
+        if (serviceType === "Facilities and Maintenance") return VIEW.FM;
+        if (serviceType === "IT Support Services - Hardware") return VIEW.HW;
+        return VIEW.SW;
+    }
+  };
+
   // view modal
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState(null);
@@ -48,7 +72,7 @@ const OnProcess = () => {
     clearTimeout(imgTimerRef.current);
   };
 
-  // NEW: generic preview overlay (for avatar or report image)
+  // generic preview overlay (for avatar or report image)
   const [imgPreviewUrl, setImgPreviewUrl] = useState(null);
   const openPreview = (url) => url && setImgPreviewUrl(url);
   const closePreview = () => setImgPreviewUrl(null);
@@ -351,6 +375,7 @@ const OnProcess = () => {
         { merge: true }
       );
 
+      // remove from onProcess
       batch.delete(fromRef);
       await batch.commit();
 
@@ -454,9 +479,9 @@ const OnProcess = () => {
         <div className="mt-6 text-gray-600 text-center">
           {scoped.length === 0
             ? "No reports are currently in process."
-            : hasFilters
-              ? "No reports in process matched your filters."
-              : "No reports are currently in process."}
+            : (q.trim() || from || to)
+            ? "No reports in process matched your filters."
+            : "No reports are currently in process."}
         </div>
       )}
 
@@ -588,31 +613,48 @@ const OnProcess = () => {
               </div>
             )}
 
-            <div className="space-y-2 text-sm">
-              <div>
-                <span className="font-semibold">Building Name:</span>{" "}
-                {selected.buildingName || "—"}
-              </div>
-              <div>
-                <span className="font-semibold">Floor Location:</span>{" "}
-                {selected.floorLocation || "—"}
-              </div>
-              <div>
-                <span className="font-semibold">Service Type:</span>{" "}
-                {selected.serviceType || "—"}
-              </div>
-              <div>
-                <span className="font-semibold">Platform / System Name:</span>{" "}
-                {selected.platformName ||
+            {/* Role-aware fields (like SentReports) */}
+            {(() => {
+              const mode = viewModeFor(myRole, selected.serviceType);
+              const common = (
+                <div>
+                  <span className="font-semibold">Other Details:</span>{" "}
+                  {selected.additionalDetails || "—"}
+                </div>
+              );
+
+              if (mode === VIEW.SW) {
+                const platform =
+                  selected.platformName ||
                   selected.systemName ||
                   selected.platform ||
-                  "—"}
-              </div>
-              <div>
-                <span className="font-semibold">Other Details:</span>{" "}
-                {selected.additionalDetails || "—"}
-              </div>
-            </div>
+                  "—";
+                return (
+                  <div className="space-y-2 text-sm">
+                    <div>
+                      <span className="font-semibold">Platform / System Name:</span>{" "}
+                      {platform}
+                    </div>
+                    {common}
+                  </div>
+                );
+              }
+
+              // FM or HW views: show location fields
+              return (
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <span className="font-semibold">Building Name:</span>{" "}
+                    {selected.buildingName || "—"}
+                  </div>
+                  <div>
+                    <span className="font-semibold">Floor / Room Location:</span>{" "}
+                    {selected.floorLocation || "—"}
+                  </div>
+                  {common}
+                </div>
+              );
+            })()}
 
             <div className="pt-5">
               <button
@@ -650,7 +692,7 @@ const OnProcess = () => {
 
       {/* Resolution Modal */}
       {resolveOpen && (
-        <div className="fixed inset-0 flex items-center justify-center z-[60] pt-10">
+        <div className="fixed inset-0 flex items-center justify-center z:[60] pt-10">
           {/* Backdrop */}
           <div onClick={() => setResolveOpen(false)} className="absolute inset-0 bg-black/50" />
           {/* Panel */}
@@ -741,7 +783,7 @@ const OnProcess = () => {
         </div>
       )}
 
-      {/* NEW: Full-screen image preview overlay (avatar or report image) */}
+      {/* Full-screen image preview overlay (avatar or report image) */}
       {imgPreviewUrl && (
         <div
           className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center"
