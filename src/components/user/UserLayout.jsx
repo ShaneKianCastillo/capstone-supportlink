@@ -205,8 +205,8 @@ const UserLayout = ({ setRole }) => {
           </button>
 
           <h1 className="text-gray-900 text-base sm:text-xl lg:text-2xl font-semibold">
-            {currentView === 'report' && 'Manual Report'}
-            {currentView === 'report-log' && 'Report Log'}
+            {currentView === 'report' && 'Report an Issue'}
+            {currentView === 'report-log' && 'Report History'}
             {currentView === 'profile' && 'Profile'}
           </h1>
 
