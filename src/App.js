@@ -1,45 +1,34 @@
-// src/App.jsx
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useEffect, useState } from "react";
-import Login from "./components/Login";
-import UserLayout from "./components/user/UserLayout";
-import AdminLayout from "./components/admin/AdminLayout";
-import CustodianLayout from "./components/propertycustodian/CustodianLayout";
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import Login from './components/Login';
+import UserLayout from './components/user/UserLayout';
+import AdminLayout from './components/admin/AdminLayout';
+import CustodianLayout from './components/propertycustodian/CustodianLayout';
 
-import ForgotPassword from "./components/ForgotPassword";
-import ResetPassword from "./components/ResetPassword";
-
-// ✅ Import our FCM helper
-import { requestFcmToken } from "./config/firebase";
+// keep your paths as-is (no /auth folder)
+import ForgotPassword from './components/ForgotPassword';
+import ResetPassword  from './components/ResetPassword';
 
 const adminRoles = [
-  "Admin",
-  "MIS Admin",
-  "CSD Admin",
-  "MIS Asst. Admin",
-  "CSD Asst. Admin",
-  "IT Support Specialist",
+  'Admin',
+  'MIS Admin',
+  'CSD Admin',
+  'MIS Asst. Admin',
+  'CSD Asst. Admin',
+  'IT Support Specialist',
 ];
 
 const App = () => {
-  const [role, setRole] = useState(localStorage.getItem("role"));
-  const isAdmin = adminRoles.includes(role || "");
-  const isCustodian = role === "Property Custodian";
+  const [role, setRole] = useState(localStorage.getItem('role'));
+  const isAdmin = adminRoles.includes(role || '');
+  const isCustodian = role === 'Property Custodian';
 
   // keep state in sync with localStorage
   useEffect(() => {
-    const handleStorageChange = () => setRole(localStorage.getItem("role"));
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
+    const handleStorageChange = () => setRole(localStorage.getItem('role'));
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
-
-  // ✅ Request FCM token after login (for any logged-in user)
-  useEffect(() => {
-    const uid = localStorage.getItem("uid");
-    if (uid) {
-      requestFcmToken(uid);
-    }
-  }, [role]);
 
   return (
     <BrowserRouter>
@@ -73,11 +62,7 @@ const App = () => {
         <Route
           path="/admin/*"
           element={
-            isAdmin ? (
-              <AdminLayout setRole={setRole} />
-            ) : (
-              <Navigate to="/" replace />
-            )
+            isAdmin ? <AdminLayout setRole={setRole} /> : <Navigate to="/" replace />
           }
         />
 
