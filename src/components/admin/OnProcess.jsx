@@ -29,7 +29,7 @@ const OnProcess = () => {
     return () => window.removeEventListener("storage", sync);
   }, []);
 
-  // ------- VIEW MODE (same idea as SentReports) -------
+  // ------- VIEW MODE -------
   const VIEW = { FM: "FM", HW: "HW", SW: "SW" };
   const viewModeFor = (role, serviceType) => {
     switch (role) {
@@ -61,6 +61,7 @@ const OnProcess = () => {
   const [resolving, setResolving] = useState(false);
   const [resolutionImage, setResolutionImage] = useState(null);
   const [resolutionNotes, setResolutionNotes] = useState("");
+  const [validationMsg, setValidationMsg] = useState("");
 
   // image hold-to-zoom (kept) + click-to-preview (new)
   const [showImageFull, setShowImageFull] = useState(false);
@@ -278,13 +279,9 @@ const OnProcess = () => {
   const totalCount = scoped.length;
   const filteredCount = filtered.length;
 
-  const hasFilters = useMemo(() => {
-    return Boolean(q.trim() || from || to);
-  }, [q, from, to]);
-
   // ---------- Pagination ----------
   const [page, setPage] = useState(1);
-  const totalPages = Math.max(1, Math.ceil(filteredCount / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const startIdx = (page - 1) * PAGE_SIZE;
   const pageRows = filtered.slice(startIdx, startIdx + PAGE_SIZE);
 
@@ -306,6 +303,7 @@ const OnProcess = () => {
   const handleOpenResolve = () => {
     setResolutionImage(null);
     setResolutionNotes("");
+    setValidationMsg("");
     setResolveOpen(true);
   };
 
@@ -329,6 +327,11 @@ const OnProcess = () => {
   };
 
   const handleResolve = async () => {
+    // ✅ require image + summary
+    if (!resolutionImage || !resolutionNotes.trim()) {
+      setValidationMsg("Please attach a resolution image and enter a resolution summary.");
+      return;
+    }
     if (!selected?.id || resolving) return;
 
     // who resolved (staff/admin)
@@ -342,8 +345,15 @@ const OnProcess = () => {
     const reporterUid = selected.uid || null;
 
     setResolving(true);
+    setValidationMsg("");
     try {
       const resolvedImageUrl = await handleUploadResolution();
+      if (!resolvedImageUrl) {
+        // If upload failed, block save
+        setResolving(false);
+        setValidationMsg("Image upload failed. Please try again.");
+        return;
+      }
 
       const batch = writeBatch(db);
       const fromRef = doc(db, "onProcess", selected.id);
@@ -384,12 +394,16 @@ const OnProcess = () => {
       setSelected(null);
       setResolutionImage(null);
       setResolutionNotes("");
+      setValidationMsg("");
     } catch (err) {
       console.error("[OnProcess] handleResolve error:", err);
+      setValidationMsg("Unable to save resolution. Please try again.");
     } finally {
       setResolving(false);
     }
   };
+
+  const isResolutionValid = Boolean(resolutionImage && resolutionNotes.trim());
 
   return (
     <div className="pb-6">
@@ -521,7 +535,10 @@ const OnProcess = () => {
                 {/* RIGHT: actions */}
                 <div className="flex items-center gap-4">
                   <button
-                    onClick={() => openModal(r)}
+                    onClick={() => {
+                      setValidationMsg("");
+                      openModal(r);
+                    }}
                     className="font-semibold underline underline-offset-4 text-black"
                   >
                     View Report
@@ -608,7 +625,7 @@ const OnProcess = () => {
                   onMouseLeave={releaseHold}
                   onTouchStart={holdToOpen}
                   onTouchEnd={releaseHold}
-                  onClick={() => openPreview(selected.imageUrl)} // 👈 click to full preview
+                  onClick={() => openPreview(selected.imageUrl)}
                 />
               </div>
             )}
@@ -658,7 +675,10 @@ const OnProcess = () => {
 
             <div className="pt-5">
               <button
-                onClick={() => setResolveOpen(true)}
+                onClick={() => {
+                  setValidationMsg("");
+                  setResolveOpen(true);
+                }}
                 className="bg-[#F2B611] text-white p-2 w-full rounded hover:bg-yellow-400"
               >
                 Mark as Resolved
@@ -690,13 +710,16 @@ const OnProcess = () => {
         </div>
       )}
 
-      {/* Resolution Modal */}
+      {/* Resolution Modal (ABOVE the view modal) */}
       {resolveOpen && (
-        <div className="fixed inset-0 flex items-center justify-center z:[60] pt-10">
+        <div className="fixed inset-0 flex items-center justify-center z-[80] pt-10">
           {/* Backdrop */}
-          <div onClick={() => setResolveOpen(false)} className="absolute inset-0 bg-black/50" />
+          <div
+            onClick={() => setResolveOpen(false)}
+            className="absolute inset-0 bg-black/50"
+          />
           {/* Panel */}
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 z-[81]">
             <button
               onClick={() => setResolveOpen(false)}
               className="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
@@ -707,12 +730,12 @@ const OnProcess = () => {
 
             <h3 className="text-lg font-bold">Resolution Details</h3>
             <p className="text-xs text-gray-500 mb-4">
-              Attach an image (optional) and describe how the issue was resolved.
+              Attach an image <span className="text-red-600 font-semibold">*</span> and describe how the issue was resolved <span className="text-red-600 font-semibold">*</span>.
             </p>
 
-            {/* Upload / Take Photo */}
+            {/* Upload / Take Photo (required) */}
             <div className="w-full">
-              <div className="bg-gray-200 h-40 w-full flex items-center justify-center rounded mb-2 overflow-hidden relative">
+              <div className={`bg-gray-200 h-40 w-full flex items-center justify-center rounded mb-2 overflow-hidden relative ${validationMsg && !resolutionImage ? "ring-2 ring-red-500" : ""}`}>
                 {resolutionImage ? (
                   <div className="h-full w-full relative">
                     <img
@@ -753,31 +776,42 @@ const OnProcess = () => {
                   </div>
                 )}
               </div>
+              {!resolutionImage && validationMsg && (
+                <div className="text-xs text-red-600 mb-2">Resolution image is required.</div>
+              )}
             </div>
 
-            {/* Notes */}
+            {/* Notes (required) */}
             <div className="mt-3">
-              <label className="block text-sm font-semibold mb-1">Resolution Summary</label>
+              <label className="block text-sm font-semibold mb-1">
+                Resolution Summary <span className="text-red-600">*</span>
+              </label>
               <textarea
                 rows={4}
                 value={resolutionNotes}
                 onChange={(e) => setResolutionNotes(e.target.value)}
-                className="w-full border border-black rounded px-3 py-2 text-sm bg-gray-50"
+                className={`w-full border border-black rounded px-3 py-2 text-sm bg-gray-50 ${validationMsg && !resolutionNotes.trim() ? "ring-2 ring-red-500" : ""}`}
                 placeholder="Explain the process of resolving the issue..."
+                required
               />
+              {!resolutionNotes.trim() && validationMsg && (
+                <div className="text-xs text-red-600 mt-1">Resolution summary is required.</div>
+              )}
             </div>
 
             {/* Submit */}
             <div className="pt-4">
               <button
-                onClick={async () => {
-                  await handleResolve();
-                }}
-                disabled={resolving}
+                onClick={handleResolve}
+                disabled={resolving || !isResolutionValid}
                 className="bg-[#0A1936] text-white px-4 py-2 rounded w-full disabled:opacity-60"
+                title={!isResolutionValid ? "Attach image and enter summary to enable" : "Save & Mark as Resolved"}
               >
                 {resolving ? "Saving..." : "Save & Mark as Resolved"}
               </button>
+              {validationMsg && (
+                <div className="text-xs text-red-600 mt-2">{validationMsg}</div>
+              )}
             </div>
           </div>
         </div>
